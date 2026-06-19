@@ -1,0 +1,41 @@
+{
+  "name": "checkit-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CheckIt Monorepo",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint .",
+    "test": "pnpm -r test && pnpm --filter @checkit/backend exec tsx src/main.ts . --fix",
+    "test:watch": "vitest",
+    "type-check": "tsc -b",
+    "dev:web": "pnpm -F @checkit/web dev",
+    "build:web": "pnpm -F @checkit/web build"
+  },
+  "packageManager": "pnpm@10.24.0",
+  "dependencies": {
+    "@checkit/backend": "workspace:*"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^25.2.3",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@typescript-eslint/eslint-plugin": "^8.55.0",
+    "@typescript-eslint/parser": "^8.55.0",
+    "@vitejs/plugin-react": "^5.1.4",
+    "eslint": "^10.0.0",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.5.0",
+    "globals": "^17.3.0",
+    "jsdom": "^28.0.0",
+    "openspec": "^0.0.0",
+    "prettier": "^3.8.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.55.0",
+    "vite": "^7.3.1",
+    "vitest": "^4.0.18"
+  }
+}

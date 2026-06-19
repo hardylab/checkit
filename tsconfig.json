@@ -1,0 +1,40 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/shared" },
+    { "path": "./packages/web" },
+    { "path": "./packages/backend" },
+    { "path": "./packages/v2" },
+    { "path": "./packages/idd-v3" }
+  ],
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    /* Linting */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+
+    "types": ["vite/client", "vitest/globals"],
+    "baseUrl": ".",
+    "paths": {
+      "@checkit/shared": ["packages/shared/src/index.ts"],
+      "@checkit/web": ["packages/web/src/index.ts"],
+      "@checkit/backend": ["packages/backend/src/index.ts"],
+      "@checkit/v2": ["packages/v2/src/index.ts"]
+    }
+  }
+}

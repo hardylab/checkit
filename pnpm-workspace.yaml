@@ -1,0 +1,7 @@
+packages:
+  - 'packages/*'
+  - 'packages/v2'
+  - 'packages/idd-v3'
+  - 'packages/idd-web'
+  - 'packages/rules-factory'
+  - 'packages/rust'

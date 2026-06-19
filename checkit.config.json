@@ -1,0 +1,9 @@
+{
+  "target": "packages/backend/src",
+  "rules": {
+    "no-console-log": "warn",
+    "use-spec-coding": "warn",
+    "filename-naming-rule": "off"
+  },
+  "ignorePatterns": ["**/test/**", "**/*.test.ts"]
+}
