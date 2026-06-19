@@ -1,6 +1,6 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { UseSpecCodingRule } from '../file/use-spec-coding';
+import { UseSpecCodingRule } from '../file/use-spec-coding/use-spec-coding.rule';
 import type { RuleContext, ReviewIssue } from '@checkit/shared';
 import fs from 'fs';
 import { execSync } from 'child_process';

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { NoCircularDependencyRule } from '../no-circular-dependency';
+import { NoCircularDependencyRule } from '../no-circular-dependency/no-circular-dependency.rule';
 import type { RuleContext } from '@checkit/shared';
 import fs from 'fs';
 import path from 'path';

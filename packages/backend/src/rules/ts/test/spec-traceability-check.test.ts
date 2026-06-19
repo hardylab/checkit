@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { SpecTraceabilityCheckRule } from '../spec-traceability-check';
+import { SpecTraceabilityCheckRule } from '../spec-traceability-check/spec-traceability-check.rule';
 import type { RuleContext } from '@checkit/shared';
 import fs from 'fs';
 

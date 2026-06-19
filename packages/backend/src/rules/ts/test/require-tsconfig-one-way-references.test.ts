@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { RequireTsconfigOneWayReferencesRule } from '../require-tsconfig-one-way-references';
+import { RequireTsconfigOneWayReferencesRule } from '../require-tsconfig-one-way-references/require-tsconfig-one-way-references.rule';
 import type { RuleContext } from '@checkit/shared';
 import fs from 'fs';
 import path from 'path';

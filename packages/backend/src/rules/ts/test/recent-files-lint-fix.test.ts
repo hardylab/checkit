@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { RecentFilesLintFixRule } from '../recent-files-lint-fix';
+import { RecentFilesLintFixRule } from '../recent-files-lint-fix/recent-files-lint-fix.rule';
 import type { RuleContext, ReviewIssue } from '@checkit/shared';
 import fs from 'fs';
 import path from 'path';

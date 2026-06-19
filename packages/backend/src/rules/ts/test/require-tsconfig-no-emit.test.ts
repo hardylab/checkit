@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { RequireTsconfigNoEmitRule } from '../require-tsconfig-no-emit';
+import { RequireTsconfigNoEmitRule } from '../require-tsconfig-no-emit/require-tsconfig-no-emit.rule';
 import type { RuleContext, ReviewIssue } from '@checkit/shared';
 import fs from 'fs';
 import path from 'path';

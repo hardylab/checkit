@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { FlowNamingRule } from '../flow-naming-rule';
+import { FlowNamingRule } from '../flow-naming-rule/flow-naming-rule.rule';
 import type { RuleContext } from '@checkit/shared';
 import fs from 'fs';
 import path from 'path';

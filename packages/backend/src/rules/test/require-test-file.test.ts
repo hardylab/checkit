@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { RequireTestFileRule } from '../ts/require-test-file';
+import { RequireTestFileRule } from '../ts/require-test-file/require-test-file.rule';
 import type { RuleContext } from '@checkit/shared';
 import fs from 'fs';
 

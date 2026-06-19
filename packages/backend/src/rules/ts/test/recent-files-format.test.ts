@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { RecentFilesFormatRule } from '../recent-files-format';
+import { RecentFilesFormatRule } from '../recent-files-format/recent-files-format.rule';
 import type { RuleContext, ReviewIssue } from '@checkit/shared';
 import fs from 'fs';
 import path from 'path';

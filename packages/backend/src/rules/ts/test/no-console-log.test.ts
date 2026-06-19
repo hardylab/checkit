@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { NoConsoleLogRule } from '../no-console-log';
+import { NoConsoleLogRule } from '../no-console-log/no-console-log.rule';
 import type { RuleContext } from '@checkit/shared';
 import fs from 'fs';
 

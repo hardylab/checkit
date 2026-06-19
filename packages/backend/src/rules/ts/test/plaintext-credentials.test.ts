@@ -1,6 +1,6 @@
 // spec:[spec](specs/backend/rules/ts/plaintext-credentials.md#L1)
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { PlaintextCredentialsRule } from '../plaintext-credentials';
+import { PlaintextCredentialsRule } from '../plaintext-credentials/plaintext-credentials.rule';
 import type { RuleContext } from '@checkit/shared';
 import fs from 'fs';
 import path from 'path';

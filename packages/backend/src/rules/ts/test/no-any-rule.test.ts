@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
-import { NoAnyRule } from '../no-any-rule';
+import { NoAnyRule } from '../no-any-rule/no-any-rule.rule';
 import type { RuleContext } from '@checkit/shared';
 
 vi.mock('fs');

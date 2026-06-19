@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { NoMagicNumbersRule } from '../no-magic-numbers';
+import { NoMagicNumbersRule } from '../no-magic-numbers/no-magic-numbers.rule';
 import type { RuleContext } from '@checkit/shared';
 import fs from 'fs';
 

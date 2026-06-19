@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { EnvVarCheckRule } from '../env-var-check';
+import { EnvVarCheckRule } from '../env-var-check/env-var-check.rule';
 import type { RuleContext } from '@checkit/shared';
 import fs from 'fs';
 

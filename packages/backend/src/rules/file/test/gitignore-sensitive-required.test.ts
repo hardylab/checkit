@@ -1,6 +1,6 @@
 // spec:[spec](specs/backend/rules/file/gitignore-sensitive-required.md#L1)
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { GitignoreSensitiveRequiredRule } from '../gitignore-sensitive-required';
+import { GitignoreSensitiveRequiredRule } from '../gitignore-sensitive-required/gitignore-sensitive-required.rule';
 import type { RuleContext, ReviewIssue } from '@checkit/shared';
 import fs from 'fs';
 import path from 'path';

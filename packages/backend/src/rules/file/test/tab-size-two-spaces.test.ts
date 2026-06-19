@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { TabSizeTwoSpacesRule } from '../tab-size-two-spaces';
+import { TabSizeTwoSpacesRule } from '../tab-size-two-spaces/tab-size-two-spaces.rule';
 import type { RuleContext, ReviewIssue } from '@checkit/shared';
 import fs from 'fs';
 import path from 'path';

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
-import { ManyConditionsRule } from '../many-conditions-rule';
+import { ManyConditionsRule } from '../many-conditions-rule/many-conditions-rule.rule';
 import type { RuleContext } from '@checkit/shared';
 
 vi.mock('fs');

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { DocPatternRule } from '../doc-pattern';
+import { DocPatternRule } from '../doc-pattern/doc-pattern.rule';
 import type { RuleContext, DocPatternChecker } from '@checkit/shared';
 import fs from 'fs';
 import { vi } from 'vitest';

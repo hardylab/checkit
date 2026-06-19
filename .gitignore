@@ -44,3 +44,6 @@ screenshots/
 
 # IDE
 .trae/
+
+# OMC session memory
+.omc/

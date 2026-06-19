@@ -1,9 +1,0 @@
-{
-  "scripts": {
-    "dev:ui": "cd src-tauri/ui && pnpm dev",
-    "build:ui": "cd src-tauri/ui && pnpm build",
-    "tauri": "cd src-tauri && cargo tauri",
-    "dev": "cargo tauri dev",
-    "build": "cargo tauri build"
-  }
-}

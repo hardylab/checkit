@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { Utf8EncodingRequiredRule } from '../utf8-encoding-required';
+import { Utf8EncodingRequiredRule } from '../utf8-encoding-required/utf8-encoding-required.rule';
 import type { RuleContext } from '@checkit/shared';
 import fs from 'fs';
 import path from 'path';

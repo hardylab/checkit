@@ -7,7 +7,7 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { describe, it, expect } from 'vitest';
-import { FilenameNamingRule } from '../filename-naming-rule';
+import { FilenameNamingRule } from '../filename-naming-rule/filename-naming-rule.rule';
 import type { RuleContext } from '@checkit/shared';
 
 describe('filenameNamingRule', () => {

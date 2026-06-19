@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { RequireIndexExportRule } from '../require-index-export';
+import { RequireIndexExportRule } from '../require-index-export/require-index-export.rule';
 import type { RuleContext } from '@checkit/shared';
 import fs from 'fs';
 import path from 'path';

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { FunctionSizeLimitRule } from '../function-size-limit';
+import { FunctionSizeLimitRule } from '../function-size-limit/function-size-limit.rule';
 import type { RuleContext } from '@checkit/shared';
 import fs from 'fs';
 

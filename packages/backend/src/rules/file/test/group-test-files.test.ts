@@ -7,7 +7,7 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { GroupTestFilesRule } from '../group-test-files';
+import { GroupTestFilesRule } from '../group-test-files/group-test-files.rule';
 import type { RuleContext, ReviewIssue } from '@checkit/shared';
 import fs from 'fs';
 import path from 'path';

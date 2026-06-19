@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { EntryPointNoLogicRule } from '../entry-point-no-logic';
+import { EntryPointNoLogicRule } from '../entry-point-no-logic/entry-point-no-logic.rule';
 import type { RuleContext } from '@checkit/shared';
 import fs from 'fs';
 

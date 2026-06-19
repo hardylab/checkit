@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { IndexOnlyExportsRule } from '../index-only-exports';
+import { IndexOnlyExportsRule } from '../index-only-exports/index-only-exports.rule';
 import type { RuleContext } from '@checkit/shared';
 import fs from 'fs';
 import path from 'path';
