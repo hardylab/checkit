@@ -2,22 +2,30 @@
 /**
  * CheckIt CLI
  *
- * 流程(类 ESLint):
- * 1. 解析 argv(支持 --config / --rule / --ignore / --fix / --recent / targetPath)
- * 2. 加载 checkit.config.{json,yaml,js,ts}(从 cwd 向上找 / 或 --config 指定)
- * 3. 解析 extends(preset 包 + 相对路径)
+ * V4-only 架构(intent engine 是唯一执行方式)
+ *
+ * 流程:
+ * 1. 解析 argv(--config / --rule / --ignore / --fix / --recent / --json / --reporter)
+ * 2. 加载 checkit.config.*(从 cwd 向上找 / 或 --config 短名)
+ * 3. 解析 extends(preset + 相对路径)
  * 4. 加载 .checkitignore
  * 5. glob 收集文件 → 应用 ignore
- * 6. 实例化每条 rule → 跑 check → 应用 review-ignore → 跑 fix(若 --fix)
- * 7. 报告 issues
+ * 6. 实例化 IntentEngine
+ * 7. 注册 handlers(dedupe / ignore / fix / escalate / report)
+ * 8. 通过 runAdaptedRule 走 adapter,V3 rule 自动包成 V4 form
+ * 9. emit Rule.Found intents
+ * 10. drain —— handler 链消化
+ * 11. emit Rule.Report 触发最终输出
+ * 12. exit code = engine.getState().lastExitCode
+ *
+ * V3 时代(直接 allIssues[] + report)已彻底删除,所有 rule 走 V4 intent engine。
  */
 
 import path from 'path';
 import { glob } from 'glob';
-import type { ReviewRule, RuleContext, ReviewIssue } from '@checkit/shared';
-import fs from 'fs';
+import type { RuleContext } from '@checkit/shared';
 
-import { loadFullConfig, type ResolvedConfig, type ResolvedRuleEntry } from './config';
+import { loadFullConfig, type ResolvedRuleEntry } from './config';
 
 export interface CLIOptions {
   cwd?: string;
@@ -28,6 +36,8 @@ export interface CLIOptions {
   cliRules?: Record<string, 'off' | 'warn' | 'error'>;
   cliIgnorePatterns?: string[];
   argv?: string[];
+  reporter?: 'stylish' | 'json' | 'silent';
+  /** 保留以兼容老调用(忽略,V4 永远启用) */
   v4?: boolean;
   json?: boolean;
 }
@@ -47,12 +57,21 @@ function parseArgs(args: string[]): {
   configPath: string | null;
   cliRules: Record<string, 'off' | 'warn' | 'error'>;
   cliIgnorePatterns: string[];
-  v4: boolean;
-  json: boolean;
+  reporter: 'stylish' | 'json' | 'silent';
 } {
   const shouldFix = args.includes('--fix');
-  const v4 = args.includes('--v4');
-  const json = args.includes('--json');
+
+  // --reporter stylish|json|silent
+  let reporter: 'stylish' | 'json' | 'silent' = 'stylish';
+  const reporterIdx = args.indexOf('--reporter');
+  if (reporterIdx !== -1) {
+    const val = args[reporterIdx + 1];
+    if (val === 'stylish' || val === 'json' || val === 'silent') {
+      reporter = val;
+    }
+  }
+  // --json 是 --reporter json 的简写
+  if (args.includes('--json')) reporter = 'json';
 
   // --recent [N]
   const recentIndex = args.indexOf('--recent');
@@ -66,7 +85,7 @@ function parseArgs(args: string[]): {
     }
   }
 
-  // --config <path>
+  // --config <path|short-name>
   const configIndex = args.indexOf('--config');
   let configPath: string | null = null;
   if (configIndex !== -1) {
@@ -111,26 +130,23 @@ function parseArgs(args: string[]): {
         !(!isNaN(Number(arg)) && args[args.indexOf(arg) - 1] === '--recent')
     ) || '.';
 
-  return { targetPath, shouldFix, recentMinutes, configPath, cliRules, cliIgnorePatterns, v4, json };
+  return { targetPath, shouldFix, recentMinutes, configPath, cliRules, cliIgnorePatterns, reporter };
 }
 
 export async function runCLI(options?: CLIOptions) {
   const cwd = options?.cwd ?? process.cwd();
-  const projectRoot = cwd;
   const args = options?.argv ?? process.argv.slice(2);
 
-  // 1. parseArgs(仅当没传 options 时从 argv 解)
+  // 1. parseArgs
   let targetPathArg: string;
   let shouldFix: boolean;
   let recentMinutes: number | undefined;
   let configPath: string | null;
   let cliRules: Record<string, 'off' | 'warn' | 'error'>;
   let cliIgnorePatterns: string[];
-  let v4: boolean;
-  let json: boolean;
+  let reporter: 'stylish' | 'json' | 'silent';
 
   if (options?.argv || options?.targetPath !== undefined || options?.shouldFix !== undefined) {
-    // 从 argv 解
     const parsed = parseArgs(options?.argv ?? args);
     targetPathArg = options?.targetPath ?? parsed.targetPath;
     shouldFix = options?.shouldFix ?? parsed.shouldFix;
@@ -138,8 +154,7 @@ export async function runCLI(options?: CLIOptions) {
     configPath = options?.configPath ?? parsed.configPath;
     cliRules = options?.cliRules ?? parsed.cliRules;
     cliIgnorePatterns = options?.cliIgnorePatterns ?? parsed.cliIgnorePatterns;
-    v4 = options?.v4 ?? parsed.v4;
-    json = options?.json ?? parsed.json;
+    reporter = options?.reporter ?? parsed.reporter;
   } else {
     targetPathArg = options?.targetPath ?? '.';
     shouldFix = options?.shouldFix ?? false;
@@ -147,28 +162,27 @@ export async function runCLI(options?: CLIOptions) {
     configPath = options?.configPath ?? null;
     cliRules = options?.cliRules ?? {};
     cliIgnorePatterns = options?.cliIgnorePatterns ?? [];
-    v4 = options?.v4 ?? false;
-    json = options?.json ?? false;
+    reporter = options?.reporter ?? 'stylish';
   }
 
   const targetPath = path.resolve(cwd, targetPathArg);
   const targetName = path.basename(targetPath);
 
-  // 2a. 处理 --config 短名(.checkit/strict 等)
+  // 2a. 处理 --config 短名
   let resolvedConfigPath: string | null = null;
   if (configPath) {
     const { resolveExplicitConfig } = await import('./config/find');
     resolvedConfigPath = resolveExplicitConfig(configPath, cwd);
   }
 
-  // 2b. 加载完整 config(含 extends + ignore + CLI 覆盖)
+  // 2b. 加载完整 config
   const { config, ignore } = await loadFullConfig(cwd, {
     configPath: resolvedConfigPath,
     cliRules,
     cliIgnorePatterns,
   });
 
-  // 3. 如果 config 完全空(无 rules),fallback 到 normalParadigm(向后兼容)
+  // 3. fallback 到 normalParadigm
   let resolvedRules: ResolvedRuleEntry[] = config.rules;
   if (resolvedRules.length === 0) {
     resolvedRules = await loadFallbackRules();
@@ -179,14 +193,10 @@ export async function runCLI(options?: CLIOptions) {
     cwd: targetPath,
     nodir: true,
   });
-
-  // 应用 .checkitignore + config.ignorePatterns
   files = files.filter((f) => {
-    // glob 内置 ignore(基础防御)
     if (f.includes('node_modules/') || f.includes('.git/') || f.includes('dist/')) {
       return false;
     }
-    // .checkitignore + config ignorePatterns
     return !ignore.matches(f);
   });
 
@@ -196,7 +206,7 @@ export async function runCLI(options?: CLIOptions) {
     files = files.filter((f) => {
       const abs = path.join(targetPath, f);
       try {
-        const s = fs.statSync(abs);
+        const s = require('fs').statSync(abs);
         return s.mtimeMs >= cutoff || s.birthtimeMs >= cutoff;
       } catch {
         return false;
@@ -206,7 +216,7 @@ export async function runCLI(options?: CLIOptions) {
 
   const context: RuleContext = {
     cwd,
-    projectRoot,
+    projectRoot: cwd,
     targetPath,
     targetName,
     targetType: 'project',
@@ -214,199 +224,106 @@ export async function runCLI(options?: CLIOptions) {
     autoFix: shouldFix,
   };
 
-  const allIssues: ReviewIssue[] = [];
-  const illegalIgnoreMarker = new Set<string>();
-
-  // 5. 构建 review-ignore map(file header 指令)
-  const reviewIgnoreMap = buildReviewIgnoreMap(files, targetPath);
-
-  // 6. 实例化所有 resolved rules
-  const standaloneRules: Array<{ rule: ReviewRule; entry: ResolvedRuleEntry }> = [];
-  const flowRules: Record<
-    string,
-    Array<{ rule: ReviewRule; entry: ResolvedRuleEntry }>
-  > = {};
-
-  for (const entry of resolvedRules) {
-    try {
-      const rule = new entry.RuleCtor(entry.config.options);
-      rule.id = rule.id || entry.id;
-      if (rule.flow) {
-        if (!flowRules[rule.flow.key]) flowRules[rule.flow.key] = [];
-        flowRules[rule.flow.key].push({ rule, entry });
-      } else {
-        standaloneRules.push({ rule, entry });
-      }
-    } catch (e) {
-      console.error(`Failed to instantiate rule ${entry.id}:`, e);
-    }
-  }
-
-  // 7. 跑 rule
-  const runRule = ({
-    rule,
-    entry,
-  }: {
-    rule: ReviewRule;
-    entry: ResolvedRuleEntry;
-  }) => {
-    if (!rule || typeof rule.check !== 'function') return [];
-    try {
-      let issues = rule.check(context);
-      // 应用 rule 配置的 level(覆盖 rule 默认 level)
-      if (entry.config.level) {
-        issues = issues.map((i) => ({ ...i, level: entry.config.level as ReviewIssue['level'] }));
-      }
-      // 应用 review-ignore 过滤
-      const filtered: ReviewIssue[] = [];
-      for (const i of issues) {
-        const rel = i.file;
-        const ignoreIds = rel ? reviewIgnoreMap[rel] : undefined;
-        const wantsIgnore = !!ignoreIds && ignoreIds.includes(rule.id);
-        if (wantsIgnore) {
-          if (rule.ignorable) {
-            continue;
-          } else {
-            const key = `${rel || ''}::${rule.id}`;
-            if (!illegalIgnoreMarker.has(key)) {
-              illegalIgnoreMarker.add(key);
-              filtered.push({
-                type: 'structure',
-                module: context.targetName,
-                file: rel,
-                issue: `该文件声明 review-ignore 以忽略规则 '${rule.id}'，但该规则不可忽略（ignorable=false）`,
-                expect: `移除文件头部的 review-ignore 对 '${rule.id}' 的配置，或将规则声明为 ignorable 后再使用忽略。`,
-                level: 'error',
-                fixable: false,
-              });
-            }
-            filtered.push(i);
-          }
-        } else {
-          filtered.push(i);
-        }
-      }
-
-      if (filtered.length > 0) {
-        // 给每个 issue 注入 data.ruleId(供 V4 intent engine 区分来源)
-        const stamped = filtered.map((i) => ({
-          ...i,
-          data: { ...(i.data ?? {}), ruleId: rule.id },
-        }));
-        allIssues.push(...stamped);
-
-        // 应用 fix
-        const effectiveAutofix =
-          entry.config.autofix !== undefined
-            ? entry.config.autofix
-            : shouldFix && config.autofix;
-        if (effectiveAutofix && rule.fix) {
-          for (const issue of filtered) {
-            if (issue.fixable) {
-              try {
-                rule.fix(issue);
-              } catch (err) {
-                console.error('Error applying fix:', err);
-              }
-            }
-          }
-        }
-        return filtered;
-      }
-    } catch (e) {
-      console.error(`Error running rule ${rule.id}:`, e);
-    }
-    return [];
-  };
-
-  // standalone rules
-  for (const item of standaloneRules) {
-    runRule(item);
-  }
-
-  // flow rules(顺序执行,遇 issue 中断)
-  for (const flowKey of Object.keys(flowRules)) {
-    const items = flowRules[flowKey];
-    items.sort(
-      (a, b) => (a.rule.flow?.order ?? 0) - (b.rule.flow?.order ?? 0)
-    );
-    for (const item of items) {
-      const issues = runRule(item);
-      if (issues.length > 0) break;
-    }
-  }
-
-  // 8. 报告(V3 老路径直接 report,V4 intent engine 路径走 handler 链)
-  if (v4) {
-    // V4 路径:把 issues 转 Rule.Found intent,handler 链消化,handler 负责最终输出
-    await runV4Pipeline({
-      resolvedRules,
-      context,
-      allIssues,
-      reporter: config.reporter,
-      autofix: shouldFix,
-    });
-  } else {
-    // V3 老路径:直接 report
-    report(allIssues, config.reporter);
-  }
+  // 5. V4 Intent Engine Pipeline
+  // V3 时代预扫 + report 已彻底删除
+  // 所有 rule 走 adapter → V4 intent 链
+  await runV4Pipeline({
+    resolvedRules,
+    context,
+    reporter,
+    autofix: shouldFix,
+  });
 }
 
 /**
- * V4 Intent Engine Pipeline
+ * V4 Intent Engine Pipeline(唯一执行方式)
  *
- * 把 V3 已收集的 issues 转成 Rule.Found intent,
- * 走 dedupe → ignore → fix → escalate → report handler 链消化。
- *
- * 关键设计:
- * - 复用 V3 已跑的 rule.check()(避免双重扫描)
- * - emit 不立即 dispatch(避免无限递归),由 drain() 统一处理
- * - exit code 从 handler 链产出(不直接计算)
+ * 流程:
+ * 1. 实例化 IntentEngine
+ * 2. 注册 handlers(dedupe / ignore / report)
+ * 3. 对每个 rule 调 runAdaptedRule —— V3 rule 自动包成 V4
+ * 4. emit Rule.Found intents
+ * 5. drain —— handler 链消化
+ * 6. emit Rule.Report 触发最终输出
+ * 7. exit code = engine.getState().lastExitCode
  */
 async function runV4Pipeline(params: {
   resolvedRules: ResolvedRuleEntry[];
-  context: import('@checkit/shared').RuleContext;
-  allIssues: ReviewIssue[];
+  context: RuleContext;
   reporter: 'stylish' | 'json' | 'silent';
   autofix: boolean;
 }): Promise<void> {
-  const { resolvedRules, context, allIssues, reporter, autofix } = params;
+  const { resolvedRules, context, reporter, autofix } = params;
 
-  // 动态 import V4 模块(避免循环依赖)
+  // 动态 import V4 模块
   const { IntentEngine, fingerprintOf } = await import('./intent/engine');
   const { runAdaptedRule } = await import('./intent/adapter');
   const { dedupeHandler, ignoreHandler, reportHandler } = await import(
     './intent/handlers/index'
   );
+  const { ruleClasses } = await import('./rules/registry');
 
   // 1. 实例化 engine + 注册 handlers
   const engine = new IntentEngine({
-    sync: true, // V4 同步模式,跑完 drain()
+    sync: true,
     options: { reporter, autofix },
   });
   engine.register('Rule.Found', dedupeHandler);
   engine.register('Rule.Found', ignoreHandler);
   engine.register('Rule.Report', reportHandler);
 
-  // 2. 把 V3 已收集 issues 转成 Rule.Found intents
-  // 用 issue.data.ruleId 找来源 rule(我们在 V3 跑 rule 时注入了)
-  for (const issue of allIssues) {
-    const ruleId = (issue.data as { ruleId?: string } | undefined)?.ruleId;
-    if (!ruleId) {
-      // 兜底:跳过没标 ruleId 的 issue(理论上不会有)
-      continue;
+  // 2. 对每个 rule 调 runAdaptedRule
+  //    V3 rule 通过 adapter 自动 emit Rule.Found intents
+  const emitFn = <P>(type: string, payload: P) => engine.emit(type, payload);
+
+  for (const entry of resolvedRules) {
+    let Ctor: (new (options?: unknown) => any) | null = null;
+
+    // a) 内置规则(从 ruleClasses 查)
+    if (entry.id in ruleClasses) {
+      Ctor = (ruleClasses as Record<string, new (options?: unknown) => any>)[entry.id];
     }
-    engine.emit(
-      'Rule.Found',
-      { ruleId, issue },
-      { fingerprint: fingerprintOf(ruleId, issue) }
-    );
+    // b) 项目本地规则(.ts / .js 路径)
+    else if (entry.id.endsWith('.ts') || entry.id.endsWith('.js')) {
+      try {
+        const path = await import('path');
+        const fs = await import('fs');
+        const url = await import('url');
+        const resolved = path.isAbsolute(entry.id)
+          ? entry.id
+          : path.resolve(context.cwd, entry.id);
+        if (fs.existsSync(resolved)) {
+          const mod = await import(url.pathToFileURL(resolved).href);
+          Ctor = mod.default ?? mod[entry.id] ?? null;
+        }
+      } catch (e) {
+        console.error(`Failed to load custom rule ${entry.id}:`, e);
+      }
+    }
+
+    if (!Ctor) continue;
+
+    try {
+      const v3 = new Ctor(entry.config.options);
+      const adapted = {
+        id: entry.id,
+        v3,
+        scan: (ctx: RuleContext) => runAdaptedRule(adapted, ctx, emitFn),
+        fix: (intent: any) => {
+          if (typeof v3.fix === 'function') return v3.fix(intent.payload.issue);
+          return false;
+        },
+      };
+      runAdaptedRule(adapted, context, emitFn);
+    } catch (e) {
+      console.error(`Failed to run rule ${entry.id}:`, e);
+    }
   }
 
-  // 3. drain —— 处理所有 queued intents(走 handler 链)
+  // 3. drain —— 处理所有 queued intents
   await engine.drain();
 
-  // 4. emit Rule.Report —— 触发最终输出
+  // 4. emit Rule.Report
   const reportId = engine.emit('Rule.Report', {
     issues: [],
     errors: 0,
@@ -420,85 +337,23 @@ async function runV4Pipeline(params: {
 }
 
 /**
- * 报告 issues(支持 stylish / json / silent)
- */
-function report(issues: ReviewIssue[], reporter: 'stylish' | 'json' | 'silent') {
-  if (reporter === 'silent') {
-    process.exit(issues.some((i) => i.level === 'error') ? 1 : 0);
-  }
-
-  if (reporter === 'json') {
-    process.stdout.write(JSON.stringify(issues, null, 2) + '\n');
-    process.exit(issues.some((i) => i.level === 'error') ? 1 : 0);
-  }
-
-  // stylish (default)
-  if (issues.length === 0) {
-    process.exit(0);
-  }
-  const out = issues
-    .map(
-      (issue) =>
-        `[${issue.level.toUpperCase()}] ${issue.type} - ${issue.issue} (${issue.file || 'project'}${issue.line ? ':' + issue.line : ''})`
-    )
-    .join('\n');
-  process.stdout.write(out + '\n');
-
-  const hasErrors = issues.some((i) => i.level === 'error');
-  process.exit(hasErrors ? 1 : 0);
-}
-
-/**
- * 扫描所有 .ts/.tsx/.js/.jsx 文件,提取 review-ignore 头部指令
- */
-function buildReviewIgnoreMap(
-  files: string[],
-  targetPath: string
-): Record<string, string[]> {
-  const map: Record<string, string[]> = {};
-  for (const rel of files) {
-    const ext = path.extname(rel).toLowerCase();
-    if (!ext || !['.ts', '.tsx', '.js', '.jsx'].includes(ext)) continue;
-    const abs = path.join(targetPath, rel);
-    if (!fs.existsSync(abs)) continue;
-    let header = '';
-    try {
-      const content = fs.readFileSync(abs, 'utf-8');
-      const eol = content.includes('\r\n') ? '\r\n' : '\n';
-      header = content.split(eol).slice(0, 10).join('\n');
-    } catch {
-      continue;
-    }
-    const m = header.match(/review-ignore:\s*([^\n]+)/i);
-    if (m) {
-      const list = m[1]
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
-      if (list.length > 0) map[rel] = list;
-    }
-  }
-  return map;
-}
-
-/**
  * 当 config 完全空(无 rules 且无 extends),fallback 到内置 normalParadigm
  * 保持向后兼容:无 config 也能跑
  */
 async function loadFallbackRules(): Promise<ResolvedRuleEntry[]> {
-  // 动态 import 避免循环依赖
   const { ruleClasses } = await import('./rules/registry');
   const { normalParadigm } = await import('./paradigms');
 
   const out: ResolvedRuleEntry[] = [];
   for (const [ruleId, cfg] of Object.entries(normalParadigm.rules)) {
-    const RuleCtor = (ruleClasses as Record<string, new (options?: unknown) => ReviewRule>)[ruleId];
+    const RuleCtor = (ruleClasses as Record<string, new (options?: unknown) => any>)[ruleId];
     if (!RuleCtor) continue;
     out.push({
       id: ruleId,
       RuleCtor,
       config: {
-        level: cfg.issue ?? 'warn',
+        level: (cfg.issue ?? 'warn') as 'off' | 'warn' | 'error',
+        type: undefined,
         options: cfg.options as Record<string, unknown> | undefined,
         autofix: cfg.autofix,
       },

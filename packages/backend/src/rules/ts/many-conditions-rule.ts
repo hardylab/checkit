@@ -1,148 +1,151 @@
-// spec:[spec](specs/backend/rules/many-conditions-rule.md#L1)
-import type { ReviewRule, ReviewIssue, RuleContext } from '@checkit/shared';
+// spec:[spec](specs/backend/rules/many-conditions-rule.md)
 import fs from 'fs';
 import path from 'path';
 import ts from 'typescript';
+import type { ReviewIssue, RuleContext } from '@checkit/shared';
 
 export interface ManyConditionsOptions {
   maxBranches?: number;
 }
 
-declare module '@checkit/shared' {
-  interface ReviewRuleRegistry {
-    'many-conditions-rule': ManyConditionsOptions;
+/**
+ * V4 重写版 many-conditions-rule
+ *
+ * 检测 if-else 链 / switch case 过多(默认 6 个分支)
+ *
+ * 改进(VS V3 老版):
+ * - issue 消息改成英文(V4 国际化)
+ * - 错误信息更具体(if-else 链 vs switch)
+ * - 保持 AST 检测逻辑(if-else 链 + switch case)
+ */
+export function checkManyConditions(
+  file: string,
+  content: string,
+  filePath: string,
+  moduleName: string,
+  maxBranches: number
+): ReviewIssue[] {
+  const issues: ReviewIssue[] = [];
+
+  // Fast pre-check
+  const lines = content.split(/\r?\n/);
+  let consecutiveIf = 0;
+  let maxConsecutiveIf = 0;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^if\s*\(|^else\s+if\s*\(/.test(trimmed)) {
+      consecutiveIf += 1;
+      if (consecutiveIf > maxConsecutiveIf) maxConsecutiveIf = consecutiveIf;
+    } else if (/^else\b/.test(trimmed)) {
+      // allow chain continuation
+      continue;
+    } else {
+      consecutiveIf = 0;
+    }
   }
+  const caseCountFast = (content.match(/^\s*case\s+/gm) || []).length;
+  if (maxConsecutiveIf < maxBranches && caseCountFast < maxBranches) {
+    return issues; // no trigger
+  }
+
+  // AST confirmation
+  const sf = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true);
+
+  const getIfChainLen = (node: ts.IfStatement): number => {
+    let count = 1;
+    let cur: ts.IfStatement | undefined = node;
+    while (cur && cur.elseStatement && ts.isIfStatement(cur.elseStatement)) {
+      count += 1;
+      cur = cur.elseStatement;
+    }
+    return count;
+  };
+
+  const collect = (node: ts.Node): void => {
+    if (ts.isIfStatement(node)) {
+      const len = getIfChainLen(node);
+      if (len >= maxBranches) {
+        const lc = sf.getLineAndCharacterOfPosition(node.getStart(sf));
+        issues.push({
+          type: 'architecture',
+          module: moduleName,
+          file,
+          line: lc.line + 1,
+          issue: `if-else chain too long: ${len} branches (max ${maxBranches})`,
+          expect:
+            'Refactor into a lookup table, polymorphism, or extract sub-conditions into helper functions.',
+          level: 'warning',
+          fixable: false,
+          data: { filePath, lineNumber: lc.line + 1, branches: len, kind: 'if-else' },
+        });
+      }
+    }
+    if (ts.isSwitchStatement(node)) {
+      const cases = node.caseBlock.clauses.filter((c) => ts.isCaseClause(c)).length;
+      if (cases >= maxBranches) {
+        const lc = sf.getLineAndCharacterOfPosition(node.getStart(sf));
+        issues.push({
+          type: 'architecture',
+          module: moduleName,
+          file,
+          line: lc.line + 1,
+          issue: `switch statement too long: ${cases} cases (max ${maxBranches})`,
+          expect:
+            'Refactor into a lookup table or polymorphism. Switch with many cases often indicates missing polymorphism.',
+          level: 'warning',
+          fixable: false,
+          data: { filePath, lineNumber: lc.line + 1, branches: cases, kind: 'switch' },
+        });
+      }
+    }
+    ts.forEachChild(node, collect);
+  };
+  collect(sf);
+
+  return issues;
 }
 
-export class ManyConditionsRule implements ReviewRule {
+export class ManyConditionsRule {
   static id = 'many-conditions-rule';
   id = ManyConditionsRule.id;
   ignorable = true;
-  private options?: ManyConditionsOptions;
-  constructor(options?: ManyConditionsOptions) {
+  private options: ManyConditionsOptions;
+
+  constructor(options: ManyConditionsOptions = {}) {
     this.options = options;
   }
 
   check(context: RuleContext): ReviewIssue[] {
     const issues: ReviewIssue[] = [];
-    const maxBranches = this.options?.maxBranches ?? 6;
-    const files = context.files.filter(
-      (f) => f.endsWith('.ts') || f.endsWith('.tsx') || f.endsWith('.js') || f.endsWith('.jsx')
-    );
+    const maxBranches = this.options.maxBranches ?? 6;
 
-    for (const rel of files) {
-      const abs = path.join(context.targetPath, rel);
-      if (!fs.existsSync(abs)) continue;
-      const content = fs.readFileSync(abs, 'utf-8');
+    for (const file of context.files) {
+      if (
+        !file.endsWith('.ts') &&
+        !file.endsWith('.tsx') &&
+        !file.endsWith('.js') &&
+        !file.endsWith('.jsx')
+      ) continue;
+      if (/\.test\.(ts|tsx)$/.test(file)) continue;
+      if (/\.spec\.(ts|tsx)$/.test(file)) continue;
 
-      // Fast pre-check: detect sequences of "if" / "else if" or "case"
-      const lines = content.split(/\r?\n/);
-      let consecutiveIf = 0;
-      let maxConsecutiveIf = 0;
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (/^if\s*\(|^else\s+if\s*\(/.test(trimmed)) {
-          consecutiveIf += 1;
-          if (consecutiveIf > maxConsecutiveIf) maxConsecutiveIf = consecutiveIf;
-        } else if (/^else\b/.test(trimmed)) {
-          // allow chain continuation
-          continue;
-        } else {
-          consecutiveIf = 0;
-        }
-      }
-      const caseCountFast = (content.match(/^\s*case\s+/gm) || []).length;
-      const triggerFast = maxConsecutiveIf >= maxBranches || caseCountFast >= maxBranches;
-      if (!triggerFast) continue;
+      // Windows 路径安全拼接
+      const sep = context.targetPath.includes('\\') ? '\\' : '/';
+      const filePath =
+        context.targetPath.replace(/[\\/]+$/, '') + sep + file.replace(/^[\\/]+/, '');
+      if (!fs.existsSync(filePath)) continue;
 
-      // AST confirmation
-      const sf = ts.createSourceFile(abs, content, ts.ScriptTarget.Latest, true);
-      const getIfChainLen = (node: ts.IfStatement): number => {
-        let count = 1;
-        let cur: ts.IfStatement | undefined = node;
-        while (cur && cur.elseStatement && ts.isIfStatement(cur.elseStatement)) {
-          count += 1;
-          cur = cur.elseStatement;
-        }
-        return count;
-      };
-      const collect = (
-        node: ts.Node,
-        reportIf: (pos: number, branches: number) => void,
-        reportSwitch: (pos: number, branches: number) => void
-      ): void => {
-        if (ts.isIfStatement(node)) {
-          const len = getIfChainLen(node);
-          if (len >= maxBranches) {
-            reportIf(node.getStart(sf), len);
-          }
-        }
-        if (ts.isSwitchStatement(node)) {
-          const cases = node.caseBlock.clauses.filter((c) => ts.isCaseClause(c)).length;
-          if (cases >= maxBranches) {
-            reportSwitch(node.getStart(sf), cases);
-          }
-        }
-        ts.forEachChild(node, (n) => collect(n, reportIf, reportSwitch));
-      };
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const moduleName = filePath
+        .replace(/\\/g, '/')
+        .split('/')
+        .filter(Boolean)
+        .slice(-2, -1)[0] || 'unknown';
 
-      let foundAny = false;
-      collect(
-        sf,
-        (pos, branches) => {
-          foundAny = true;
-          const lc = sf.getLineAndCharacterOfPosition(pos);
-          issues.push({
-            type: 'architecture',
-            module: context.targetName,
-            file: rel,
-            line: lc.line + 1,
-            issue: `if-else 链分支过多（${branches}），超过阈值 ${maxBranches}`,
-            expect: [
-              '重构为策略模式或函数映射（表驱动）：',
-              'interface Strategy { handle(x: any): any }',
-              'const strategies: Record<string, Strategy> = { a: new A(), b: new B() }',
-              'return (strategies[key] ?? defaultStrategy).handle(input)',
-              '或使用函数表：',
-              'const handlers: Record<string, (x: any) => any> = { a: hA, b: hB }',
-              'return (handlers[key] ?? default)(input)',
-              '复杂链可改为职责链：',
-              'abstract class Handler { setNext(h: Handler): Handler; handle(req: any): any }',
-              'const h = h1.setNext(h2).setNext(h3); return h.handle(req)',
-            ].join('\n'),
-            level: 'warning',
-            fixable: false,
-          });
-        },
-        (pos, branches) => {
-          foundAny = true;
-          const lc = sf.getLineAndCharacterOfPosition(pos);
-          issues.push({
-            type: 'architecture',
-            module: context.targetName,
-            file: rel,
-            line: lc.line + 1,
-            issue: `switch-case 分支过多（${branches}），超过阈值 ${maxBranches}`,
-            expect: [
-              '重构为表驱动或命令/策略模式：',
-              'const cases: Record<number, () => any> = { 1: () => do1(), 2: () => do2() }',
-              'return (cases[key] ?? default)()',
-              '若分支具备状态转换，采用状态模式：',
-              'interface State { run(ctx: any): any }',
-              'const states: Record<string, State> = { s1: new S1(), s2: new S2() }',
-              'return (states[current] ?? defaultState).run(ctx)',
-            ].join('\n'),
-            level: 'warning',
-            fixable: false,
-          });
-        }
-      );
-      if (!foundAny) {
-        // If fast check triggered but AST didn't, skip
-        continue;
-      }
+      issues.push(...checkManyConditions(file, content, filePath, moduleName, maxBranches));
     }
-
     return issues;
   }
 }
+
+export default ManyConditionsRule;

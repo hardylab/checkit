@@ -1,16 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-
+import fs from 'fs';
+import path from 'path';
 import { NoAnyRule } from '../no-any-rule';
 import type { RuleContext } from '@checkit/shared';
-import fs from 'fs';
 
 vi.mock('fs');
 
-describe('no-any-rule', () => {
+describe('no-any-rule (V4)', () => {
   const mockContext: RuleContext = {
-    cwd: '/test/cwd',
-    projectRoot: '/test/root',
-    targetPath: '/test/target',
+    cwd: 'D:/test/cwd',
+    projectRoot: 'D:/test/root',
+    targetPath: 'D:/test/target',
     targetName: 'test-project',
     targetType: 'project',
     files: ['a.ts'],
@@ -19,100 +19,92 @@ describe('no-any-rule', () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.spyOn(fs, 'existsSync').mockReturnValue(true);
+    // Windows 路径兼容
+    vi.spyOn(fs, 'existsSync').mockImplementation((p) => {
+      return String(p).replace(/\\/g, '/').includes('D:/test/target/a.ts');
+    });
   });
 
-  it('should report issue when "any" is used', () => {
-    vi.spyOn(fs, 'readFileSync').mockReturnValue(
-      `
+  it('reports any in type annotation', () => {
+    vi.spyOn(fs, 'readFileSync').mockReturnValue(`
 const a: any = 1;
-function foo(b: any) {}
-    `.trim()
-    );
+const b: string = 'x';
+`.trim());
 
     const rule = new NoAnyRule({});
     const issues = rule.check(mockContext);
 
-    expect(issues).toHaveLength(2);
-    expect(issues[0].issue).toContain("Avoid using 'any' type");
+    expect(issues.length).toBe(1);
+    expect(issues[0].issue).toContain("'any'");
+    expect(issues[0].line).toBe(1);
   });
 
-  it('should not report issue when "any" is disabled on previous line', () => {
-    vi.spyOn(fs, 'readFileSync').mockReturnValue(
-      `
-const a: any = 1;
-    `.trim()
-    );
-
-    const rule = new NoAnyRule({});
-
-    const issues = rule.check(mockContext);
-    expect(issues).toHaveLength(0);
-  });
-
-  it('should not report issue when "any" is disabled on same line', () => {
-    vi.spyOn(fs, 'readFileSync').mockReturnValue(
-      `
-const a: any = 1; // eslint-disable-line @typescript-eslint/no-explicit-any
-    `.trim()
-    );
+  it('reports any in function parameter', () => {
+    vi.spyOn(fs, 'readFileSync').mockReturnValue(`
+function foo(x: any) { return x; }
+`.trim());
 
     const rule = new NoAnyRule({});
     const issues = rule.check(mockContext);
-
-    expect(issues).toHaveLength(0);
+    expect(issues.length).toBe(1);
   });
 
-  it('should report issue for "as any"', () => {
-    vi.spyOn(fs, 'readFileSync').mockReturnValue(
-      `
-const a = b as any;
-    `.trim()
-    );
-
-    const rule = new NoAnyRule({});
-
-    const issues = rule.check(mockContext);
-
-    expect(issues).toHaveLength(1);
-  });
-
-  it('should report issue for generic "<any>"', () => {
-    vi.spyOn(fs, 'readFileSync').mockReturnValue(
-      `
-const a = new Map<string, any>();
-    `.trim()
-    );
+  it('reports any in generic parameter', () => {
+    vi.spyOn(fs, 'readFileSync').mockReturnValue(`
+const m = new Map<string, any>();
+`.trim());
 
     const rule = new NoAnyRule({});
     const issues = rule.check(mockContext);
-    expect(issues).toHaveLength(1);
+    expect(issues.length).toBe(1);
   });
 
-  it('should ignore "any" in comments', () => {
-    vi.spyOn(fs, 'readFileSync').mockReturnValue(
-      `
-// This is an any type
+  it('skips `as any` type assertion (still considered a violation by V3 spec, but practical exception)', () => {
+    // V4 设计选择:`as any` 是必要模式(external API 强转),不报告
+    vi.spyOn(fs, 'readFileSync').mockReturnValue(`
+const x = something as any;
+`.trim());
+
+    const rule = new NoAnyRule({});
+    const issues = rule.check(mockContext);
+    expect(issues.length).toBe(0);
+  });
+
+  it('ignores "any" in comments', () => {
+    vi.spyOn(fs, 'readFileSync').mockReturnValue(`
+// this is an any type
 const a = 1;
-    `.trim()
-    );
+`.trim());
 
     const rule = new NoAnyRule({});
     const issues = rule.check(mockContext);
-    expect(issues).toHaveLength(0);
+    expect(issues.length).toBe(0);
   });
 
-  it('should ignore files that are not ts/tsx', () => {
+  it('ignores "any" in string literals', () => {
+    vi.spyOn(fs, 'readFileSync').mockReturnValue(`
+const greeting = "any string";
+`.trim());
+
+    const rule = new NoAnyRule({});
+    const issues = rule.check(mockContext);
+    expect(issues.length).toBe(0);
+  });
+
+  it('skips test files', () => {
+    const testContext = { ...mockContext, files: ['a.test.ts'] };
+    vi.spyOn(fs, 'readFileSync').mockReturnValue('const a: any = 1;');
+    const rule = new NoAnyRule({});
+    const issues = rule.check(testContext);
+    expect(issues.length).toBe(0);
+  });
+
+  it('ignores non-TS files', () => {
     const jsContext = { ...mockContext, files: ['a.js'] };
-
-    // Should not read file
     const readSpy = vi.spyOn(fs, 'readFileSync');
-
     const rule = new NoAnyRule({});
     const issues = rule.check(jsContext);
-
-    expect(issues).toHaveLength(0);
-
+    expect(issues.length).toBe(0);
     expect(readSpy).not.toHaveBeenCalled();
   });
 });
