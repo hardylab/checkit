@@ -1,10 +1,12 @@
 ---
 name: git-no-large-files
+type: rule
 title: Block large files from git history
 tags: [git, hygiene]
 severity: error
 status: stable
 since: 0.1.0
+timestamp: 2026-06-20
 ---
 
 ## TL;DR

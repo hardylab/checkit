@@ -1,10 +1,12 @@
 ---
 name: file\gitignore-sensitive-required\gitignore-sensitive-required
+type: rule
 title: Require sensitive file patterns in .gitignore
 tags: [security, hygiene]
 severity: warn
 status: stable
 since: 0.1.0
+timestamp: 2026-06-20
 ---
 
 ## TL;DR

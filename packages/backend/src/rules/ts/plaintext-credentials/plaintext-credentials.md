@@ -1,10 +1,12 @@
 ---
 name: plaintext-credentials
+type: rule
 title: Disallow plaintext credentials in source code
 tags: [security, credentials]
 severity: error
 status: stable
 since: 0.1.0
+timestamp: 2026-06-20
 ---
 
 ## TL;DR

@@ -1,10 +1,12 @@
 ---
 name: env-var-check
+type: rule
 title: Validate environment variable usage
 tags: [config, env, safety]
 severity: warning
 status: stable
 since: 0.1.0
+timestamp: 2026-06-20
 ---
 
 ## TL;DR

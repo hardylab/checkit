@@ -1,9 +1,11 @@
 ---
 name: git-ignore-required
+type: rule
 title: Git Ignore Required
 tags: [file, security, hygiene, gitignore]
 severity: warn
 status: stable
+timestamp: 2026-06-20
 ---
 
 # git-ignore-required
@@ -14,10 +16,10 @@ status: stable
 
 跟 [`gitignore-sensitive-required`](../gitignore-sensitive-required/README.md) 的区别:
 
-| 规则 | 关注点 | 典型模式 |
-|---|---|---|
-| `git-ignore-required` | 通用卫生(任何项目都该有) | `node_modules/`, `dist/`, `.env`, `*.log`, `.DS_Store` |
-| `gitignore-sensitive-required` | 敏感信息(易泄密) | `*.pem`, `*.key`, `secrets/`, `credentials.json` |
+| 规则                           | 关注点                   | 典型模式                                               |
+| ------------------------------ | ------------------------ | ------------------------------------------------------ |
+| `git-ignore-required`          | 通用卫生(任何项目都该有) | `node_modules/`, `dist/`, `.env`, `*.log`, `.DS_Store` |
+| `gitignore-sensitive-required` | 敏感信息(易泄密)         | `*.pem`, `*.key`, `secrets/`, `credentials.json`       |
 
 `git-ignore-required` 是"仓库基本卫生"—— 防止误把构建产物、依赖、本地配置、IDE 临时文件提交进仓库。
 
@@ -62,24 +64,21 @@ Thumbs.db
 {
   "rules": {
     "git-ignore-required": {
-      "level": "warn",          // "off" | "warn" | "error"
+      "level": "warn", // "off" | "warn" | "error"
       "type": "security",
       "options": {
-        "patterns": [
-          "vendor/",
-          "tmp/"
-        ]
+        "patterns": ["vendor/", "tmp/"],
       },
-      "autofix": true
-    }
-  }
+      "autofix": true,
+    },
+  },
 }
 ```
 
 ### 选项
 
-| 选项 | 类型 | 说明 |
-|---|---|---|
+| 选项       | 类型       | 说明                                    |
+| ---------- | ---------- | --------------------------------------- |
 | `patterns` | `string[]` | 追加的自定义必填模式(并入默认列表,去重) |
 
 ---
@@ -106,6 +105,7 @@ src/  package.json
 ```
 
 → 触发 **error**:
+
 > Missing .gitignore file — every project must have one
 
 ### ⚠️ `.gitignore` 存在但缺模式
@@ -116,7 +116,8 @@ dist/
 ```
 
 → 触发 **warn**:
-> Missing patterns in .gitignore: node_modules/, .env, *.log, .DS_Store
+
+> Missing patterns in .gitignore: node_modules/, .env, \*.log, .DS_Store
 
 ---
 

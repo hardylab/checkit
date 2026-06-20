@@ -1,10 +1,12 @@
 ---
 name: require-tsconfig-one-way-references
+type: rule
 title: Require TypeScript project references to form a directed acyclic graph
 tags: [typescript, architecture]
 severity: warning
 status: stable
 since: 0.1.0
+timestamp: 2026-06-20
 ---
 
 ## TL;DR

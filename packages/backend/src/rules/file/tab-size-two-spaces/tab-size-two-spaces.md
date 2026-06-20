@@ -1,10 +1,12 @@
 ---
 name: tab-size-two-spaces
+type: rule
 title: Enforce 2-space indentation (no tabs)
 tags: [formatting, indentation]
 severity: warning
 status: stable
 since: 0.1.0
+timestamp: 2026-06-20
 ---
 
 ## TL;DR

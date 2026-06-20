@@ -1,10 +1,12 @@
 ---
 name: flow-naming-rule
+type: rule
 title: Enforce flow / pipeline naming convention
 tags: [naming, architecture]
 severity: warning
 status: stable
 since: 0.1.0
+timestamp: 2026-06-20
 ---
 
 ## TL;DR

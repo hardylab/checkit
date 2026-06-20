@@ -1,10 +1,12 @@
 ---
 name: entry-point-no-logic
+type: rule
 title: Disallow business logic in entry-point files
 tags: [architecture, entry-point]
 severity: warning
 status: stable
 since: 0.1.0
+timestamp: 2026-06-20
 ---
 
 ## TL;DR

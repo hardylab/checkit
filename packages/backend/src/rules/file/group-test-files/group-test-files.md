@@ -1,10 +1,12 @@
 ---
 name: group-test-files
+type: rule
 title: Group test files in dedicated test/ directory
 tags: [structure, testing, organization]
 severity: warning
 status: stable
 since: 0.1.0
+timestamp: 2026-06-20
 ---
 
 ## TL;DR

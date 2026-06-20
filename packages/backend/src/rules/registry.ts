@@ -23,6 +23,7 @@ import { GitignoreSensitiveRequiredRule } from './file/gitignore-sensitive-requi
 import { GitNoLargeFilesRule } from './file/git-no-large-files/git-no-large-files.rule';
 import { GitIgnoreRequiredRule } from './file/git-ignore-required/git-ignore-required.rule';
 import { GitNoSecretsInHistoryRule } from './file/git-no-secrets-in-history/git-no-secrets-in-history.rule';
+import { OkfComplianceRule } from './file/okf-compliance/okf-compliance.rule';
 // OpenClaw 目录权限规则已迁移到独立 preset 包(@checkit/preset-openclaw),从 preset 加载
 // import { OpenclawDirPermRule } from './openclaw/openclaw-dir-perm';
 // import { OpenclawConfigPermRule } from './openclaw/openclaw-config-perm';
@@ -60,6 +61,7 @@ export const ruleClasses = {
   'git-no-large-files': GitNoLargeFilesRule,
   'git-ignore-required': GitIgnoreRequiredRule,
   'git-no-secrets-in-history': GitNoSecretsInHistoryRule,
+  'okf-compliance': OkfComplianceRule,
   // OpenClaw 规则已迁移到独立 preset 包,本地不注册
   'flow-naming-rule': FlowNamingRule,
   'many-conditions-rule': ManyConditionsRule,

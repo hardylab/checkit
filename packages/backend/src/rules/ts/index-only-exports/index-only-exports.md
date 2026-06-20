@@ -1,10 +1,12 @@
 ---
 name: ts\index-only-exports\index-only-exports
+type: rule
 title: Enforce index.ts files to only re-export symbols, never define them
 tags: [architecture, module-boundaries]
 severity: warn
 status: stable
 since: 0.1.0
+timestamp: 2026-06-20
 ---
 
 ## TL;DR

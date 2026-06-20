@@ -1,10 +1,12 @@
 ---
 name: recent-files-format
+type: rule
 title: Enforce formatting on recently modified files
 tags: [formatting, freshness]
 severity: warning
 status: stable
 since: 0.1.0
+timestamp: 2026-06-20
 ---
 
 ## TL;DR

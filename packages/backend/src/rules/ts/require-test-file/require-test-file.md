@@ -1,10 +1,12 @@
 ---
 name: require-test-file
+type: rule
 title: Require corresponding test file for every source module that defines functions
 tags: [testing, coverage]
 severity: warn
 status: stable
 since: 0.1.0
+timestamp: 2026-06-20
 ---
 
 ## TL;DR

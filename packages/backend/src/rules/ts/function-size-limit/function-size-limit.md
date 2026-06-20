@@ -1,10 +1,12 @@
 ---
 name: function-size-limit
+type: rule
 title: Limit function size
 tags: [readability, maintainability]
 severity: warning
 status: stable
 since: 0.1.0
+timestamp: 2026-06-20
 ---
 
 ## TL;DR

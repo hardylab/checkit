@@ -1,10 +1,12 @@
 ---
 name: no-any-rule
+type: rule
 title: Disallow the any type in TypeScript code
 tags: [typescript, type-safety]
 severity: error
 status: stable
 since: 0.1.0
+timestamp: 2026-06-20
 ---
 
 ## TL;DR

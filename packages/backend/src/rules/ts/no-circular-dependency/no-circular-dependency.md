@@ -1,10 +1,12 @@
 ---
 name: ts\no-circular-dependency\no-circular-dependency
+type: rule
 title: Detect and prevent circular dependencies between source files
 tags: [architecture, module-boundaries]
 severity: warn
 status: stable
 since: 0.1.0
+timestamp: 2026-06-20
 ---
 
 ## TL;DR

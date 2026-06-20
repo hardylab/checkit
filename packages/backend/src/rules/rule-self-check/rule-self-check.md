@@ -1,10 +1,12 @@
 ---
 name: rule-self-check
+type: rule
 title: Each rule must have a README.md for the marketplace
 tags: [meta, documentation, marketplace]
 severity: warning
 status: stable
 since: 0.1.0
+timestamp: 2026-06-20
 ---
 
 ## TL;DR

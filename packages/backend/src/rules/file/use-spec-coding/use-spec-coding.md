@@ -1,10 +1,12 @@
 ---
 name: use-spec-coding
+type: rule
 title: Enforce spec-coding annotation on source files
 tags: [documentation, spec, annotation]
 severity: warning
 status: stable
 since: 0.1.0
+timestamp: 2026-06-20
 ---
 
 ## TL;DR

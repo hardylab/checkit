@@ -1,10 +1,12 @@
 ---
 name: spec-traceability-check
+type: rule
 title: Enforce spec traceability annotations on recently modified source files
 tags: [traceability, documentation, specification]
 severity: warn
 status: stable
 since: 0.1.0
+timestamp: 2026-06-20
 ---
 
 ## TL;DR

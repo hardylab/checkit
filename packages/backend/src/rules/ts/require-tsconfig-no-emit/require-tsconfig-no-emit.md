@@ -1,10 +1,12 @@
 ---
 name: require-tsconfig-no-emit
+type: rule
 title: Require compilerOptions.noEmit in all tsconfig files
 tags: [typescript, config]
 severity: warn
 status: stable
 since: 0.1.0
+timestamp: 2026-06-20
 ---
 
 ## TL;DR

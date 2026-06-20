@@ -1,10 +1,12 @@
 ---
 name: many-conditions-rule
+type: rule
 title: Limit the number of if/else branches in a function
 tags: [readability, cyclomatic-complexity]
 severity: warning
 status: stable
 since: 0.1.0
+timestamp: 2026-06-20
 ---
 
 ## TL;DR

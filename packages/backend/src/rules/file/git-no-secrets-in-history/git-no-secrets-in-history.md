@@ -1,10 +1,12 @@
 ---
 name: git-no-secrets-in-history
+type: rule
 title: Scan git history for leaked secrets
 tags: [git, security]
 severity: error
 status: stable
 since: 0.1.0
+timestamp: 2026-06-20
 ---
 
 ## TL;DR

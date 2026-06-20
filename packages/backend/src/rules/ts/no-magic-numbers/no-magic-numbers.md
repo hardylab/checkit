@@ -1,10 +1,12 @@
 ---
 name: no-magic-numbers
+type: rule
 title: Disallow magic numbers in code
 tags: [readability, magic-numbers]
 severity: warning
 status: stable
 since: 0.1.0
+timestamp: 2026-06-20
 ---
 
 ## TL;DR

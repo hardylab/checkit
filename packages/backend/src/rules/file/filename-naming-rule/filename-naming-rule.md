@@ -1,10 +1,12 @@
 ---
 name: file\filename-naming-rule\filename-naming-rule
+type: rule
 title: Enforce consistent filename naming conventions per directory and extension
 tags: [naming, style]
 severity: warn
 status: stable
 since: 0.1.0
+timestamp: 2026-06-20
 ---
 
 ## TL;DR

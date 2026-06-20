@@ -1,10 +1,12 @@
 ---
 name: utf8-encoding-required
+type: rule
 title: Require UTF-8 encoding for text files
 tags: [encoding, i18n]
 severity: warning
 status: stable
 since: 0.1.0
+timestamp: 2026-06-20
 ---
 
 ## TL;DR

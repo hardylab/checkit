@@ -1,10 +1,12 @@
 ---
 name: file\doc-pattern\doc-pattern
+type: rule
 title: Enforce required project file and directory structure
 tags: [file, structure, architecture]
 severity: warn
 status: stable
 since: 0.1.0
+timestamp: 2026-06-20
 ---
 
 ## TL;DR

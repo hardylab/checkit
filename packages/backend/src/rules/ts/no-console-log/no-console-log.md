@@ -1,10 +1,12 @@
 ---
 name: no-console-log
+type: rule
 title: Disallow console.log in source files
 tags: [log, debug, code-cleanup]
 severity: warning
 status: stable
 since: 0.1.0
+timestamp: 2026-06-20
 ---
 
 ## TL;DR
