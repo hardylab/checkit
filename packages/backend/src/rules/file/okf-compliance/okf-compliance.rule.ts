@@ -1,7 +1,8 @@
 // spec:[OKF v0.1](https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing)
 import fs from 'fs';
 import path from 'path';
-import type { ReviewIssue, RuleContext } from '@checkit/shared';
+import ts from 'typescript';
+import type { ReviewIssue, RuleContext, ReviewRule } from '@checkit/shared';
 import { windowSafeJoin, tryReadFile } from '../../_shared/utils';
 
 /**
@@ -9,26 +10,14 @@ import { windowSafeJoin, tryReadFile } from '../../_shared/utils';
  *
  * 检查 .md 文件 frontmatter 是否兼容 OKF v0.1 字段。
  *
- * OKF 6 个核心字段:
- * - type: 'rule' | 'doc' | 'wiki' | 'bundle' | 'concept'
- * - title: 短标题
- * - description: 详细描述
- * - resource: 外部资源(可选)
- * - tags: 标签数组
- * - timestamp: ISO8601 时间戳
+ * check() 检测:type / title / timestamp 3 个关键字段
+ * fix() 自动修:补 type: rule + timestamp: 当前日期(不动 title,因为需要人类判断)
  *
- * 设计选择:
- * - 不强制所有 6 个字段,只检测 3 个关键的(type / title / timestamp)
- * - tags 视为可选(允许空)
- * - description 可以从第一段自动提取(不强求)
- * - type 必须是 'rule'(对 checkit rule doc 来说)
- *
- * 触发:warn 级别(OKF 是新标准,6 天前发布,容错优先)
+ * 5 步闭环:checkit rule 必须支持 fix()(rule-structure 强制)
  */
-
 const OKF_REQUIRED_FIELDS = ['type', 'title', 'timestamp'] as const;
 
-const OkfComplianceRule = class OkfComplianceRule {
+const OkfComplianceRule: ReviewRule = class OkfComplianceRule {
   static id = 'okf-compliance';
   id = OkfComplianceRule.id;
   glob = '**/*.md';
@@ -40,14 +29,11 @@ const OkfComplianceRule = class OkfComplianceRule {
     const seenFiles = new Set<string>();
 
     for (const file of context.files) {
-      // 只查 .md 文件
       if (!file.endsWith('.md')) continue;
-      // 排除 test / node_modules / dist
       if (file.includes('/test/') || file.includes('\\test\\')) continue;
       if (file.includes('/node_modules/') || file.includes('\\node_modules\\')) continue;
       if (file.includes('/dist/') || file.includes('\\dist\\')) continue;
 
-      // 去重
       if (seenFiles.has(file)) continue;
       seenFiles.add(file);
 
@@ -83,14 +69,52 @@ const OkfComplianceRule = class OkfComplianceRule {
 
     return issues;
   }
+
+  /**
+   * fix() —— rule 自己的修复逻辑
+   *
+   * 自动补:
+   * - type: rule
+   * - timestamp: 当前日期(YYYY-MM-DD)
+   *
+   * 不动 title(需要人类判断)
+   */
+  fix(issue: ReviewIssue): boolean {
+    const filePath = issue.data?.filePath as string | undefined;
+    const missingFields = issue.data?.missingFields as string[] | undefined;
+    if (!filePath || !fs.existsSync(filePath)) return false;
+
+    const content = tryReadFile(filePath);
+    if (!content) return false;
+
+    const match = content.match(/^---\s*\n([\s\S]*?)\n---/);
+    if (!match) return false;
+
+    let block = match[1];
+    const original = block;
+    const today = new Date().toISOString().split('T')[0];
+
+    for (const field of missingFields || []) {
+      if (field === 'type' && !/^type\s*:/m.test(block)) {
+        block = `type: rule\n${block}`;
+      } else if (field === 'timestamp' && !/^timestamp\s*:/m.test(block)) {
+        if (/^title\s*:/m.test(block)) {
+          block = block.replace(/^(title\s*:.*)$/m, `$1\ntimestamp: ${today}`);
+        } else {
+          block += `\ntimestamp: ${today}`;
+        }
+      }
+      // title 不自动补(需要人类写)
+    }
+
+    if (block === original) return false;
+
+    const newContent = content.replace(/^---\s*\n([\s\S]*?)\n---/, `---\n${block}\n---`);
+    fs.writeFileSync(filePath, newContent, 'utf-8');
+    return true;
+  }
 };
 
-/**
- * 简易 YAML frontmatter 解析
- *
- * 只解析 `key: value` 简单形式(不处理嵌套 / 数组完整语法)。
- * 因为 OKF 6 个字段都是简单 key:value,不需要复杂 parser。
- */
 function parseFrontmatter(content: string): Record<string, string> {
   const match = content.match(/^---\s*\n([\s\S]*?)\n---/);
   if (!match) return {};
@@ -101,7 +125,6 @@ function parseFrontmatter(content: string): Record<string, string> {
     if (m) {
       const key = m[1];
       let value = m[2].trim();
-      // 去掉 YAML 字符串引号
       if (
         (value.startsWith('"') && value.endsWith('"')) ||
         (value.startsWith("'") && value.endsWith("'"))

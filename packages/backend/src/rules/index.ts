@@ -10,6 +10,8 @@ export * from './file/git-ignore-required/git-ignore-required.rule';
 export * from './file/git-no-large-files/git-no-large-files.rule';
 export * from './file/git-no-secrets-in-history/git-no-secrets-in-history.rule';
 export * from './file/okf-compliance/okf-compliance.rule';
+export * from './file/rule-structure/rule-structure.rule';
+import { RuleStructureRule } from './file/rule-structure/rule-structure.rule';
 export * from './file/gitignore-sensitive-required/gitignore-sensitive-required.rule';
 export * from './file/group-test-files/group-test-files.rule';
 export * from './file/tab-size-two-spaces/tab-size-two-spaces.rule';
