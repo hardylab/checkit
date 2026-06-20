@@ -1,28 +1,26 @@
 ---
-name: ts\recent-files-format\recent-files-format
-title: Check recent files are formatted with Prettier
-tags: [formatting, prettier]
-severity: warn
+name: recent-files-format
+title: Enforce formatting on recently modified files
+tags: [formatting, freshness]
+severity: warning
 status: stable
 since: 0.1.0
 ---
 
 ## TL;DR
 
-Ensures files modified within a configurable time window (default 60 min) are properly formatted with Prettier.
+Files modified within `--recent` minutes must be correctly formatted (Prettier-compatible). Catches forgotten formatters.
 
 ## Why use this rule
 
-- Catches unformatted files immediately after save, before they reach code review
-- Auto-fixable — runs `prettier --write` on the offending file with one click
-- Keeps the codebase consistently formatted without running full-project formatting
+- Catches "I forgot to format" in code review
+- Forces clean diff for recent work
+- Reduces stylistic comments in PRs
 
 ## When it fires
 
-```ts
-// A file was edited within the last 60 minutes but is not Prettier-compliant
-```
+A recently modified file fails `prettier --check`
 
 ## How to fix
 
-Run `prettier --write <file>` manually or apply the auto-fix provided by the rule.
+Run `prettier --write <file>`
