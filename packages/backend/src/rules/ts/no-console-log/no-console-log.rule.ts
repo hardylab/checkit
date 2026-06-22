@@ -21,7 +21,7 @@ export class NoConsoleLogRule implements ReviewRule {
           !file.endsWith('.tsx') &&
           !file.endsWith('.js') &&
           !file.endsWith('.jsx')) ||
-        /(^|[\\/])test([\\/]|$)/.test(file)
+        /(^|[\\/])(test|dist|node_modules)([\\/]|$)/.test(file)
       ) {
         continue;
       }

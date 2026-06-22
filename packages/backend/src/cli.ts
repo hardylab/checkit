@@ -53,6 +53,20 @@ export interface CLIOptions {
    * 不是用来跑用户项目的。
    */
   dev?: boolean;
+  /**
+   * AI-Fix 模式 —— 调 AI 自动修 issue
+   *
+   * 行为:
+   * - 跑完一轮 check 后,把所有 issue 收集
+   * - 选一个可用 AI agent(claude / opencode / hermes / openclaw)
+   * - 对每个 issue 调 AI 修(写文件)
+   * - 输出修复汇总
+   *
+   * 默认自动选第一个可用 agent。`aiAgent` 强制指定。
+   */
+  aiFix?: boolean;
+  /** 显式指定 AI agent: 'claude' | 'opencode' | 'hermes' | 'openclaw' */
+  aiAgent?: string;
 }
 
 export function handleFatalError(e: unknown) {
@@ -72,9 +86,22 @@ function parseArgs(args: string[]): {
   cliIgnorePatterns: string[];
   reporter: 'stylish' | 'json' | 'silent';
   dev: boolean;
+  aiFix: boolean;
+  aiAgent: string | undefined;
 } {
   const shouldFix = args.includes('--fix');
   const dev = args.includes('--dev');
+  const aiFix = args.includes('--ai-fix');
+
+  // --ai-agent <name>
+  const aiAgentIdx = args.indexOf('--ai-agent');
+  let aiAgent: string | undefined;
+  if (aiAgentIdx !== -1) {
+    const val = args[aiAgentIdx + 1];
+    if (val && !val.startsWith('--')) {
+      aiAgent = val;
+    }
+  }
 
   // --reporter stylish|json|silent
   let reporter: 'stylish' | 'json' | 'silent' = 'stylish';
@@ -156,6 +183,8 @@ function parseArgs(args: string[]): {
     cliIgnorePatterns,
     reporter,
     dev,
+    aiFix,
+    aiAgent,
   };
 }
 
@@ -177,6 +206,8 @@ export async function runCLI(options?: CLIOptions) {
   let cliIgnorePatterns: string[];
   let reporter: 'stylish' | 'json' | 'silent';
   let dev: boolean;
+  let aiFix: boolean;
+  let aiAgent: string | undefined;
 
   targetPathArg = options?.targetPath ?? parsed.targetPath;
   shouldFix = options?.shouldFix ?? parsed.shouldFix;
@@ -186,6 +217,8 @@ export async function runCLI(options?: CLIOptions) {
   cliIgnorePatterns = options?.cliIgnorePatterns ?? parsed.cliIgnorePatterns;
   reporter = options?.reporter ?? parsed.reporter;
   dev = options?.dev ?? parsed.dev;
+  aiFix = parsed.aiFix;
+  aiAgent = options?.aiAgent ?? parsed.aiAgent;
 
   // ─── DEV 模式短路 ────────────────────────────────────────
   // dev 模式优先于 config/argv 的常规解析:
@@ -298,6 +331,8 @@ export async function runCLI(options?: CLIOptions) {
     reporter,
     autofix: shouldFix,
     dev,
+    aiFix,
+    aiAgent,
   });
 }
 
@@ -319,8 +354,10 @@ async function runV4Pipeline(params: {
   reporter: 'stylish' | 'json' | 'silent';
   autofix: boolean;
   dev?: boolean;
+  aiFix?: boolean;
+  aiAgent?: string;
 }): Promise<void> {
-  const { resolvedRules, context, reporter, autofix, dev } = params;
+  const { resolvedRules, context, reporter, autofix, dev, aiFix: aiFixEnabled, aiAgent } = params;
 
   // 动态 import V4 模块
   const { IntentEngine, fingerprintOf } = await import('./intent/engine');
@@ -398,7 +435,37 @@ async function runV4Pipeline(params: {
   });
   await engine.dispatch(reportId);
 
-  // 5. exit code
+  // 5. AI-Fix hook —— if --ai-fix, pick an agent and try to fix each issue
+  if (aiFixEnabled) {
+    const activeIssues = Array.from(engine.getState().activeIssues.values());
+    if (activeIssues.length === 0) {
+      process.stdout.write('✅ no issues — nothing for AI-Fix to do\n');
+    } else {
+      process.stdout.write(`\n🤖 AI-Fix: ${activeIssues.length} issue(s) to fix\n`);
+      try {
+        const { aiFix } = await import('./ai');
+        const result = await aiFix(activeIssues, {
+          cwd: context.cwd,
+          targetPath: context.targetPath,
+          files: context.files,
+        }, {
+          agentName: aiAgent,
+          verify: false, // verify pass would re-run all rules; leave as a future knob
+        });
+        process.stdout.write(`   agent:   ${result.agentUsed ?? '(none available)'}\n`);
+        process.stdout.write(`   fixed:   ${result.fixedCount}/${result.totalIssues}\n`);
+        process.stdout.write(`   failed:  ${result.failedCount}\n`);
+        process.stdout.write(`   skipped: ${result.skippedCount}\n`);
+        if (result.fixedCount > 0) {
+          process.stdout.write(`\n✨ Re-run \`checkit\` to verify the fixes.\n`);
+        }
+      } catch (e) {
+        process.stderr.write(`AI-Fix error: ${(e as Error).message}\n`);
+      }
+    }
+  }
+
+  // 6. exit code
   const exitCode = engine.getState().lastExitCode ?? 0;
   process.exit(exitCode);
 }

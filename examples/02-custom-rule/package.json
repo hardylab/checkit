@@ -1,0 +1,13 @@
+{
+  "name": "checkit-custom-rule",
+  "version": "0.0.1",
+  "description": "Write your own CheckIt rule in .checkit/rules/ — ban lodash imports.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "review": "checkit"
+  },
+  "devDependencies": {
+    "@checkit/cli": "^0.1.0"
+  }
+}

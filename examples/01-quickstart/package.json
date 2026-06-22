@@ -1,0 +1,14 @@
+{
+  "name": "checkit-quickstart",
+  "version": "0.0.1",
+  "description": "5-minute smoke test — install @checkit/cli and run it against a deliberately bad project.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "review": "checkit",
+    "review:json": "checkit --reporter json"
+  },
+  "devDependencies": {
+    "@checkit/cli": "^0.1.0"
+  }
+}
