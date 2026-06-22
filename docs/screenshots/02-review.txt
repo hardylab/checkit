@@ -1,0 +1,4 @@
+$ cd examples/02-custom-rule
+$ pnpm add -D @checkit/cli
+$ pnpm exec checkit
+[WARN] no-lodash - Banned import 'lodash' — use native ES utilities instead (src\users.ts:2)

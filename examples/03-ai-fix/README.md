@@ -21,13 +21,13 @@ cd examples/03-ai-fix
 pnpm install
 
 # 1. See what's broken
-pnpm review
+pnpm exec checkit
 
 # 2. Let AI fix it
-pnpm ai-fix
+pnpm exec checkit --ai-fix
 
 # 3. Re-run to verify (issues should be 0 or much less)
-pnpm review
+pnpm exec checkit
 ```
 
 ## What the output looks like

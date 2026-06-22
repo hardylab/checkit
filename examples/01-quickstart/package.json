@@ -5,8 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "review": "checkit",
-    "review:json": "checkit --reporter json"
+    "review:json": "pnpm exec checkit --reporter json"
   },
   "devDependencies": {
     "@checkit/cli": "^0.1.0"

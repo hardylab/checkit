@@ -4,9 +4,6 @@
   "description": "Write your own CheckIt rule in .checkit/rules/ — ban lodash imports.",
   "private": true,
   "type": "module",
-  "scripts": {
-    "review": "checkit"
-  },
   "devDependencies": {
     "@checkit/cli": "^0.1.0"
   }

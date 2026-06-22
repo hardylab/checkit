@@ -4,11 +4,6 @@
   "description": "Killer demo — let CheckIt auto-fix console.log / any with --ai-fix.",
   "private": true,
   "type": "module",
-  "scripts": {
-    "review": "checkit",
-    "fix": "checkit --fix",
-    "ai-fix": "checkit --ai-fix"
-  },
   "devDependencies": {
     "@checkit/cli": "^0.1.0"
   }

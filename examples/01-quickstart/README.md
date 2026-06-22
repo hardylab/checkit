@@ -9,7 +9,7 @@ or that need hand-written rules.
 ```bash
 cd examples/01-quickstart
 pnpm install
-pnpm review
+pnpm exec checkit
 ```
 
 ## Expected output

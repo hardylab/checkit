@@ -1,0 +1,7 @@
+$ cd examples/01-quickstart
+$ pnpm add -D @checkit/cli
+$ pnpm exec checkit
+[WARNING] structure - console.log detected (src\main.ts:6)
+[WARNING] type-safety - Avoid using 'any' type — use 'unknown' + type guard or specific type instead (src\main.ts:7)
+[ERROR] structure - 目录 "." 缺少 index.ts 用于统一导出 (index.ts)
+[ERROR] structure - 目录 "src" 缺少 index.ts 用于统一导出 (src\index.ts)

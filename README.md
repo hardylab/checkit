@@ -18,6 +18,38 @@ $ pnpm exec checkit --ai-fix
 
 See [`examples/KILLER-DEMO.md`](./examples/KILLER-DEMO.md) for the 60-second walkthrough.
 
+### Real terminal output (captured by `examples/scripts/demo.sh`)
+
+After `pnpm exec checkit` on a fresh project with bad code:
+
+```
+$ cd examples/01-quickstart
+$ pnpm add -D @checkit/cli
+$ pnpm exec checkit
+[WARNING] structure - console.log detected (src\main.ts:6)
+[WARNING] type-safety - Avoid using 'any' type — use 'unknown' + type guard or specific type instead (src\main.ts:7)
+[ERROR] structure - 目录 "." 缺少 index.ts 用于统一导出 (index.ts)
+[ERROR] structure - 目录 "src" 缺少 index.ts 用于统一导出 (src\index.ts)
+```
+
+After adding `--ai-fix`:
+
+```
+$ pnpm exec checkit --ai-fix
+[WARNING] structure - console.log detected (src\main.ts:5)
+[WARNING] structure - console.log detected (src\main.ts:11)
+[WARNING] structure - console.log detected (src\main.ts:19)
+[WARNING] type-safety - Avoid using 'any' type (src\main.ts:6)
+
+🤖 AI-Fix: 4 issue(s) to fix
+   agent:   opencode
+   fixed:   4/4
+   failed:   0
+   skipped:  0
+```
+
+Full reproducible captures in [`docs/screenshots/`](./docs/screenshots/).
+
 ## Why CheckIt?
 
 | Tool       | Catches                                         |

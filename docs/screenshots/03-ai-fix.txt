@@ -1,0 +1,8 @@
+$ pnpm exec checkit --ai-fix
+[WARNING] structure - console.log detected (src\main.ts:5)
+[WARNING] structure - console.log detected (src\main.ts:11)
+[WARNING] structure - console.log detected (src\main.ts:19)
+[WARNING] type-safety - Avoid using 'any' type — use 'unknown' + type guard or specific type instead (src\main.ts:6)
+
+🤖 AI-Fix: 4 issue(s) to fix
+(ai-fix timed out — install opencode / claude to run for real)

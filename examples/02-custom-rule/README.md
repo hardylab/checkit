@@ -8,7 +8,7 @@ imports (use native ES instead).
 ```bash
 cd examples/02-custom-rule
 pnpm install
-pnpm review
+pnpm exec checkit
 ```
 
 ## Expected output

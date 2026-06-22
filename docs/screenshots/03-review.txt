@@ -1,0 +1,7 @@
+$ cd examples/03-ai-fix
+$ pnpm add -D @checkit/cli
+$ pnpm exec checkit
+[WARNING] structure - console.log detected (src\main.ts:5)
+[WARNING] structure - console.log detected (src\main.ts:11)
+[WARNING] structure - console.log detected (src\main.ts:19)
+[WARNING] type-safety - Avoid using 'any' type — use 'unknown' + type guard or specific type instead (src\main.ts:6)

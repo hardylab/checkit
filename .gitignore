@@ -40,7 +40,7 @@ pnpm-debug.log*
 # Test artifacts
 playwright-report/
 test-results/
-screenshots/
+/screenshots/
 
 # IDE
 .trae/
