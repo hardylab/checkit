@@ -25,6 +25,7 @@ import { GitIgnoreRequiredRule } from './file/git-ignore-required/git-ignore-req
 import { GitNoSecretsInHistoryRule } from './file/git-no-secrets-in-history/git-no-secrets-in-history.rule';
 import { OkfComplianceRule } from './file/okf-compliance/okf-compliance.rule';
 import { RuleStructureRule } from './file/rule-structure/rule-structure.rule';
+import { RuleSelfCheckRule } from './rule-self-check/rule-self-check.rule';
 // OpenClaw 目录权限规则已迁移到独立 preset 包(@checkit/preset-openclaw),从 preset 加载
 // import { OpenclawDirPermRule } from './openclaw/openclaw-dir-perm';
 // import { OpenclawConfigPermRule } from './openclaw/openclaw-config-perm';
@@ -64,6 +65,7 @@ export const ruleClasses = {
   'git-no-secrets-in-history': GitNoSecretsInHistoryRule,
   'okf-compliance': OkfComplianceRule,
   'rule-structure': RuleStructureRule,
+  'rule-self-check': RuleSelfCheckRule,
   // OpenClaw 规则已迁移到独立 preset 包,本地不注册
   'flow-naming-rule': FlowNamingRule,
   'many-conditions-rule': ManyConditionsRule,

@@ -40,6 +40,9 @@ export * from './ts/spec-traceability-check/spec-traceability-check.rule';
 // architecture rules
 export * from './architecture/flow-naming-rule/flow-naming-rule.rule';
 
+// meta rules (rule self-check + future cross-cutting)
+export * from './rule-self-check/rule-self-check.rule';
+
 // OpenClaw 规则已迁移到独立 preset 包(@checkit/preset-openclaw),从 preset 加载
 // import { OpenclawDirPermRule } from './openclaw/openclaw-dir-perm';
 // ... (略)

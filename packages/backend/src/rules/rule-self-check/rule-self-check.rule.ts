@@ -1,6 +1,6 @@
 // spec:[spec](specs/backend/rules/rule-self-check.md)
 import fs from 'fs';
-import type { ReviewIssue, RuleContext } from '@checkit/shared';
+import type { ReviewIssue, RuleContext, ReviewRule } from '@checkit/shared';
 import { windowSafeJoin } from '../_shared/utils';
 
 /**
@@ -18,13 +18,16 @@ import { windowSafeJoin } from '../_shared/utils';
  * 这是 checkit 自身的元规则(meta-rule)。
  * 用于自举(self-bootstrapping)时,确保每个内置规则都有完整文档。
  *
+ * fix():自动生成标准 OKF frontmatter 模板 <name>.md
+ * 后续可由人类编辑或 AI-Fix 填充正文。
+ *
  * glob: 任意层 *.rule.ts(命中每个 rule 文件)
  * 触发:该 rule 所在文件夹缺 <name>.md
  *
  * 设计:warn 级别(可以临时缺,提醒而不是阻塞)
  */
 
-const RuleSelfCheckRule = class RuleSelfCheckRule {
+const RuleSelfCheckRule: ReviewRule = class RuleSelfCheckRule {
   static id = 'rule-self-check';
   id = RuleSelfCheckRule.id;
   glob = '**/*.rule.ts';
@@ -64,7 +67,7 @@ const RuleSelfCheckRule = class RuleSelfCheckRule {
           module: baseName,
           file: `${dir}/${baseName}.rule.ts`,
           issue: `Rule '${baseName}' missing <name>.md — needed for rule marketplace display and Obsidian wiki links`,
-          expect: `Create ${baseName}/${baseName}.md with frontmatter (name, title, tags, severity, status) + TL;DR + usage examples.`,
+          expect: `Create ${baseName}.md with frontmatter (name, title, tags, severity, status) + TL;DR + usage examples.`,
           level: 'warning',
           fixable: true,
           data: {
@@ -85,7 +88,7 @@ const RuleSelfCheckRule = class RuleSelfCheckRule {
           module: baseName,
           file: `${dir}/${baseName}.rule.ts`,
           issue: `Rule '${baseName}' missing <name>.rule.ts implementation`,
-          expect: `Create ${baseName}/${baseName}.rule.ts implementing ReviewRule.`,
+          expect: `Create ${baseName}.rule.ts implementing ReviewRule.`,
           level: 'error',
           fixable: false,
         });
@@ -94,7 +97,79 @@ const RuleSelfCheckRule = class RuleSelfCheckRule {
 
     return issues;
   }
+
+  /**
+   * fix() —— 自动创建 <name>.md 模板
+   *
+   * 用 OKF v0.1 frontmatter + TL;DR 骨架填充,人类后续编辑正文。
+   * 这样 --fix 模式下,checkit 自举能批量生成缺失的 rule 文档。
+   *
+   * 安全网:
+   * - 已存在不覆盖(避免误删人类手写内容)
+   * - 写入失败返回 false(交给 AI-Fix 重试)
+   */
+  fix(issue: ReviewIssue): boolean {
+    const data = issue.data as
+      | { filePath?: string; ruleName?: string; ruleDir?: string }
+      | undefined;
+    if (!data?.filePath || !data?.ruleName) return false;
+    const { filePath, ruleName } = data;
+
+    if (fs.existsSync(filePath)) return false;
+
+    const today = new Date().toISOString().split('T')[0];
+    const template = renderRuleDocTemplate(ruleName, today);
+
+    try {
+      // 确保父目录存在(rule-self-check 自己触发时,目录必然存在;
+      // 但兜底逻辑避免 race)
+      const parentDir = data.ruleDir;
+      if (parentDir && !fs.existsSync(parentDir)) {
+        fs.mkdirSync(parentDir, { recursive: true });
+      }
+      fs.writeFileSync(filePath, template, 'utf-8');
+      return true;
+    } catch {
+      return false;
+    }
+  }
 };
+
+/**
+ * 生成 rule 文档模板
+ *
+ * OKF v0.1 frontmatter + 标准 TL;DR + Why + When + How to fix 骨架
+ * title 留 `TBD` 让人类编辑(AI 不该擅自命名规则)
+ */
+function renderRuleDocTemplate(ruleName: string, today: string): string {
+  return `---
+name: ${ruleName}
+type: rule
+title: TBD
+tags: [TBD]
+severity: warning
+status: draft
+since: TBD
+timestamp: ${today}
+---
+
+## TL;DR
+
+<!-- One sentence: what does this rule check? -->
+
+## Why use this rule
+
+<!-- Why does this matter? What bug/cost does it prevent? -->
+
+## When it fires
+
+<!-- Concrete condition that triggers an issue -->
+
+## How to fix
+
+<!-- Step-by-step fix recipe -->
+`;
+}
 
 export default RuleSelfCheckRule;
 export { RuleSelfCheckRule };

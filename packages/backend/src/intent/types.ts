@@ -111,6 +111,13 @@ export interface RunOptions {
   autofix: boolean;
   recentMinutes?: number;
   reporter: 'stylish' | 'json' | 'silent';
+  /**
+   * dev mode —— checkit 自检
+   *
+   * reporter handler 在 dev 模式下,0 issue 时输出
+   * `✅ checkit self-check passed` 给人类明显反馈。
+   */
+  dev?: boolean;
 }
 
 export interface RunState {

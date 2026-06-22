@@ -40,6 +40,19 @@ export interface CLIOptions {
   /** 保留以兼容老调用(忽略,V4 永远启用) */
   v4?: boolean;
   json?: boolean;
+  /**
+   * 开发模式 —— checkit 自检自己
+   *
+   * 行为:
+   * - targetPath 自动覆盖到 `<monorepo-root>/packages/backend/src`
+   * - 用 devParadigm(rule-self-check + rule-structure + okf-compliance)替换 normalParadigm
+   * - 输出 banner 表明进入 dev 模式
+   * - 错误时 exit 1(强制阻塞)
+   *
+   * 用途:`pnpm test` 跑完后,checkit 自己也必须通过自己的 meta-rule。
+   * 不是用来跑用户项目的。
+   */
+  dev?: boolean;
 }
 
 export function handleFatalError(e: unknown) {
@@ -58,8 +71,10 @@ function parseArgs(args: string[]): {
   cliRules: Record<string, 'off' | 'warn' | 'error'>;
   cliIgnorePatterns: string[];
   reporter: 'stylish' | 'json' | 'silent';
+  dev: boolean;
 } {
   const shouldFix = args.includes('--fix');
+  const dev = args.includes('--dev');
 
   // --reporter stylish|json|silent
   let reporter: 'stylish' | 'json' | 'silent' = 'stylish';
@@ -123,14 +138,25 @@ function parseArgs(args: string[]): {
   }
 
   // targetPath:第一个非 flag、非 --X=Y 值的参数
-  const targetPath =
-    args.find(
-      (arg) =>
-        !arg.startsWith('--') &&
-        !(!isNaN(Number(arg)) && args[args.indexOf(arg) - 1] === '--recent')
-    ) || '.';
+  // --dev 模式忽略位置参数(target 自动覆盖)
+  const targetPath = dev
+    ? '.'
+    : args.find(
+        (arg) =>
+          !arg.startsWith('--') &&
+          !(!isNaN(Number(arg)) && args[args.indexOf(arg) - 1] === '--recent')
+      ) || '.';
 
-  return { targetPath, shouldFix, recentMinutes, configPath, cliRules, cliIgnorePatterns, reporter };
+  return {
+    targetPath,
+    shouldFix,
+    recentMinutes,
+    configPath,
+    cliRules,
+    cliIgnorePatterns,
+    reporter,
+    dev,
+  };
 }
 
 export async function runCLI(options?: CLIOptions) {
@@ -145,6 +171,7 @@ export async function runCLI(options?: CLIOptions) {
   let cliRules: Record<string, 'off' | 'warn' | 'error'>;
   let cliIgnorePatterns: string[];
   let reporter: 'stylish' | 'json' | 'silent';
+  let dev: boolean;
 
   if (options?.argv || options?.targetPath !== undefined || options?.shouldFix !== undefined) {
     const parsed = parseArgs(options?.argv ?? args);
@@ -155,6 +182,7 @@ export async function runCLI(options?: CLIOptions) {
     cliRules = options?.cliRules ?? parsed.cliRules;
     cliIgnorePatterns = options?.cliIgnorePatterns ?? parsed.cliIgnorePatterns;
     reporter = options?.reporter ?? parsed.reporter;
+    dev = options?.dev ?? parsed.dev;
   } else {
     targetPathArg = options?.targetPath ?? '.';
     shouldFix = options?.shouldFix ?? false;
@@ -163,30 +191,74 @@ export async function runCLI(options?: CLIOptions) {
     cliRules = options?.cliRules ?? {};
     cliIgnorePatterns = options?.cliIgnorePatterns ?? [];
     reporter = options?.reporter ?? 'stylish';
+    dev = options?.dev ?? false;
+  }
+
+  // ─── DEV 模式短路 ────────────────────────────────────────
+  // dev 模式优先于 config/argv 的常规解析:
+  // - target 强制 = <monorepo-root>/packages/backend/src
+  // - paradigm 强制 = devParadigm
+  // - 输出 banner
+  let resolvedRules: ResolvedRuleEntry[] = [];
+  let ignore: { matches: (f: string) => boolean };
+
+  if (dev) {
+    const { findRepoRoot, resolveDevTarget } = await import('./cli-utils');
+    const repoRoot = findRepoRoot(cwd);
+    const devTarget = resolveDevTarget(repoRoot);
+
+    process.stdout.write(`\n🔧 checkit dev mode: self-checking ${devTarget}\n`);
+    process.stdout.write(`   repoRoot = ${repoRoot}\n`);
+    process.stdout.write(`   rules    = rule-self-check (error), rule-structure (error), okf-compliance (warn)\n\n`);
+
+    targetPathArg = devTarget;
+    configPath = null;
+    cliRules = {};
+    cliIgnorePatterns = [];
+
+    // 显式加载 devParadigm
+    const { ruleClasses } = await import('./rules/registry');
+    const { devParadigm } = await import('./paradigms');
+    for (const [ruleId, cfg] of Object.entries(devParadigm.rules)) {
+      const RuleCtor = (ruleClasses as Record<string, new (options?: unknown) => any>)[ruleId];
+      if (!RuleCtor) continue;
+      resolvedRules.push({
+        id: ruleId,
+        RuleCtor,
+        config: {
+          level: (cfg.issue ?? 'warn') as 'off' | 'warn' | 'error',
+          type: undefined,
+          options: cfg.options as Record<string, unknown> | undefined,
+          autofix: cfg.autofix,
+        },
+      });
+    }
+    ignore = { matches: () => false };
+  } else {
+    // 2a. 处理 --config 短名
+    let resolvedConfigPath: string | null = null;
+    if (configPath) {
+      const { resolveExplicitConfig } = await import('./config/find');
+      resolvedConfigPath = resolveExplicitConfig(configPath, cwd);
+    }
+
+    // 2b. 加载完整 config
+    const cfg = await loadFullConfig(cwd, {
+      configPath: resolvedConfigPath,
+      cliRules,
+      cliIgnorePatterns,
+    });
+    resolvedRules = cfg.config.rules;
+    ignore = cfg.ignore;
+
+    // 3. fallback 到 normalParadigm
+    if (resolvedRules.length === 0) {
+      resolvedRules = await loadFallbackRules();
+    }
   }
 
   const targetPath = path.resolve(cwd, targetPathArg);
   const targetName = path.basename(targetPath);
-
-  // 2a. 处理 --config 短名
-  let resolvedConfigPath: string | null = null;
-  if (configPath) {
-    const { resolveExplicitConfig } = await import('./config/find');
-    resolvedConfigPath = resolveExplicitConfig(configPath, cwd);
-  }
-
-  // 2b. 加载完整 config
-  const { config, ignore } = await loadFullConfig(cwd, {
-    configPath: resolvedConfigPath,
-    cliRules,
-    cliIgnorePatterns,
-  });
-
-  // 3. fallback 到 normalParadigm
-  let resolvedRules: ResolvedRuleEntry[] = config.rules;
-  if (resolvedRules.length === 0) {
-    resolvedRules = await loadFallbackRules();
-  }
 
   // 4. glob 收集文件
   let files = await glob('**/*', {
@@ -232,6 +304,7 @@ export async function runCLI(options?: CLIOptions) {
     context,
     reporter,
     autofix: shouldFix,
+    dev,
   });
 }
 
@@ -252,8 +325,9 @@ async function runV4Pipeline(params: {
   context: RuleContext;
   reporter: 'stylish' | 'json' | 'silent';
   autofix: boolean;
+  dev?: boolean;
 }): Promise<void> {
-  const { resolvedRules, context, reporter, autofix } = params;
+  const { resolvedRules, context, reporter, autofix, dev } = params;
 
   // 动态 import V4 模块
   const { IntentEngine, fingerprintOf } = await import('./intent/engine');
@@ -266,7 +340,7 @@ async function runV4Pipeline(params: {
   // 1. 实例化 engine + 注册 handlers
   const engine = new IntentEngine({
     sync: true,
-    options: { reporter, autofix },
+    options: { reporter, autofix, dev },
   });
   engine.register('Rule.Found', dedupeHandler);
   engine.register('Rule.Found', ignoreHandler);

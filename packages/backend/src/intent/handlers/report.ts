@@ -32,6 +32,10 @@ export const reportHandler: IntentHandler<RuleFoundPayload | RuleReportPayload> 
 
     // stylish (default)
     if (issues.length === 0) {
+      // dev 模式:0 issue 输出"通过"提示(普通模式保持静默——issue=0 是常态)
+      if (ctx.options.dev) {
+        process.stdout.write('✅ checkit self-check passed — every rule has docs + ReviewRule contract + OKF frontmatter\n');
+      }
       ctx.state.lastExitCode = 0;
       return;
     }
@@ -43,7 +47,9 @@ export const reportHandler: IntentHandler<RuleFoundPayload | RuleReportPayload> 
           })`
       )
       .join('\n');
-    process.stdout.write(out + '\n');
+    // dev 模式:在 issue 列表前加 banner(让 CI 日志一眼能区分 dev vs user)
+    const prefix = ctx.options.dev ? '❌ checkit self-check FAILED:\n' : '';
+    process.stdout.write(prefix + out + '\n');
     ctx.state.lastExitCode = issues.some((i) => i.level === 'error') ? 1 : 0;
   }
   // Rule.Found:不做事(由 dedupe/ignore 处理)
