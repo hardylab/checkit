@@ -163,7 +163,12 @@ export async function runCLI(options?: CLIOptions) {
   const cwd = options?.cwd ?? process.cwd();
   const args = options?.argv ?? process.argv.slice(2);
 
-  // 1. parseArgs
+  // 1. parseArgs —— always parse argv, even when options is passed.
+  //    The previous guard `if (options?.argv || ...)` accidentally skipped
+  //    parsing in `runCLI()` (no-options) calls, which made --dev / --fix /
+  //    --reporter silently inert. Merge options on top of parsed.
+  const parsed = parseArgs(args);
+
   let targetPathArg: string;
   let shouldFix: boolean;
   let recentMinutes: number | undefined;
@@ -173,26 +178,14 @@ export async function runCLI(options?: CLIOptions) {
   let reporter: 'stylish' | 'json' | 'silent';
   let dev: boolean;
 
-  if (options?.argv || options?.targetPath !== undefined || options?.shouldFix !== undefined) {
-    const parsed = parseArgs(options?.argv ?? args);
-    targetPathArg = options?.targetPath ?? parsed.targetPath;
-    shouldFix = options?.shouldFix ?? parsed.shouldFix;
-    recentMinutes = options?.recentMinutes ?? parsed.recentMinutes;
-    configPath = options?.configPath ?? parsed.configPath;
-    cliRules = options?.cliRules ?? parsed.cliRules;
-    cliIgnorePatterns = options?.cliIgnorePatterns ?? parsed.cliIgnorePatterns;
-    reporter = options?.reporter ?? parsed.reporter;
-    dev = options?.dev ?? parsed.dev;
-  } else {
-    targetPathArg = options?.targetPath ?? '.';
-    shouldFix = options?.shouldFix ?? false;
-    recentMinutes = options?.recentMinutes;
-    configPath = options?.configPath ?? null;
-    cliRules = options?.cliRules ?? {};
-    cliIgnorePatterns = options?.cliIgnorePatterns ?? [];
-    reporter = options?.reporter ?? 'stylish';
-    dev = options?.dev ?? false;
-  }
+  targetPathArg = options?.targetPath ?? parsed.targetPath;
+  shouldFix = options?.shouldFix ?? parsed.shouldFix;
+  recentMinutes = options?.recentMinutes ?? parsed.recentMinutes;
+  configPath = options?.configPath ?? parsed.configPath;
+  cliRules = options?.cliRules ?? parsed.cliRules;
+  cliIgnorePatterns = options?.cliIgnorePatterns ?? parsed.cliIgnorePatterns;
+  reporter = options?.reporter ?? parsed.reporter;
+  dev = options?.dev ?? parsed.dev;
 
   // ─── DEV 模式短路 ────────────────────────────────────────
   // dev 模式优先于 config/argv 的常规解析:

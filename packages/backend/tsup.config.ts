@@ -32,7 +32,10 @@ export default defineConfig([
     target: 'node18',
     bundle: true,
     splitting: false,
-    treeshake: true,
+    // treeshake kills the parseArgs() branch because the call site passes
+    // no options — tsup statically sees `options?.argv || ...` as unreachable.
+    // Keep treeshake off until we explicitly mark the branches side-effectful.
+    treeshake: false,
     minify: false, // keep readable for debugging; flip to true for ship
     shims: true,   // auto-polyfill __dirname / __filename in ESM
     noExternal: [
