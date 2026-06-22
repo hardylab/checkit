@@ -166,12 +166,21 @@ function parseArgs(args: string[]): {
 
   // targetPath:第一个非 flag、非 --X=Y 值的参数
   // --dev 模式忽略位置参数(target 自动覆盖)
+  // 关键:必须跳过 --reporter / --ai-agent / --config / --recent 等 flag 的 value
+  // (这些 value 也不以 -- 开头,会被误当成 targetPath)
+  const skipNext = new Set<number>();
+  for (let i = 0; i < args.length - 1; i++) {
+    if (args[i] === '--reporter' || args[i] === '--ai-agent' || args[i] === '--config' || args[i] === '--recent') {
+      skipNext.add(i + 1);
+    }
+  }
   const targetPath = dev
     ? '.'
     : args.find(
-        (arg) =>
+        (arg, i) =>
           !arg.startsWith('--') &&
-          !(!isNaN(Number(arg)) && args[args.indexOf(arg) - 1] === '--recent')
+          !skipNext.has(i) &&
+          !(!isNaN(Number(arg)) && args[i - 1] === '--recent')
       ) || '.';
 
   return {
