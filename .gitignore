@@ -47,3 +47,8 @@ screenshots/
 
 # OMC session memory
 .omc/
+
+
+# Build artifacts
+*.tgz
+packages/*/dist/

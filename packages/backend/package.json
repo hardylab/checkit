@@ -1,23 +1,57 @@
 {
-  "name": "@checkit/backend",
-  "version": "1.0.0",
+  "name": "@checkit/cli",
+  "version": "0.1.0",
+  "description": "Compile-time testing for TypeScript projects. Enforce team conventions at compile time, with AI-Fix built in.",
   "type": "module",
-  "main": "src/index.ts",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
   "bin": {
-    "checkit": "src/cli.ts"
+    "checkit": "./dist/cli.cjs"
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
-    "test": "vitest run && tsx src/main.ts",
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
     "test:unit": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepublishOnly": "pnpm build && pnpm test",
+    "clean": "rm -rf dist"
   },
+  "keywords": [
+    "linter",
+    "static-analysis",
+    "typescript",
+    "conventions",
+    "architecture",
+    "ai-fix",
+    "intent-engine",
+    "compile-time",
+    "paradigm"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT",
+  "author": "hardylab",
   "dependencies": {
-    "@checkit/shared": "workspace:*",
-    "openspec": "^0.0.0"
+    "glob": "^11.0.1"
   },
   "devDependencies": {
     "@types/node": "^25.2.3",
-    "glob": "^11.0.1",
+    "tsup": "^8.5.1",
     "tsx": "^4.19.2",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"

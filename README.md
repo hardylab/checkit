@@ -36,22 +36,29 @@ Examples of conventions CheckIt can enforce:
 # Install
 pnpm add -D @checkit/cli
 
-# Run with default config
-pnpm review
-
-# Run with V4 intent engine
-pnpm review --v4
+# Run with default config (or create checkit.config.ts in project root)
+pnpm exec checkit
 
 # Use a specific paradigm
-pnpm review --config strict
+pnpm exec checkit --config strict
+
+# JSON output for CI
+pnpm exec checkit --reporter json
 ```
+
+## What's new in 0.1.0
+
+- **Package name**: published as `@checkit/cli` (single bundle, types inlined)
+- **V4 intent engine** (always on) — handler chain dedupe → ignore → fix → escalate → report
+- **29 built-in rules** — type safety, structure, security, style, architecture
+- **Auto-fix** built into most rules
 
 ## Project-local config
 
-Create `.checkit/default.config.ts` in your project:
+Create `checkit.config.ts` in your project root:
 
 ```ts
-import type { CheckitConfig } from 'checkit-backend-types';
+import type { CheckitConfig } from '@checkit/cli';
 
 const config: CheckitConfig = {
   rules: {
@@ -69,7 +76,7 @@ Place your custom rules in `.checkit/rules/`:
 
 ```ts
 // .checkit/rules/my-rule.ts
-import type { ReviewRule, ReviewIssue, RuleContext } from '@checkit/shared';
+import type { ReviewRule, ReviewIssue, RuleContext } from '@checkit/cli';
 
 class MyRule implements ReviewRule {
   id = 'my-rule';
