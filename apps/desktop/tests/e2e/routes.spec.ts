@@ -33,7 +33,7 @@ test.describe('Navigation', () => {
     await page.goto('/');
     await page.getByRole('link', { name: 'Chat' }).first().click();
     await page.waitForURL(/\/chat/);
-    await expect(page.getByRole('heading', { name: /Chat — AI 规则助手/ })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'AI 规则助手' })).toBeVisible();
   });
 
   test('active tab is highlighted correctly', async ({ page }) => {
@@ -49,20 +49,21 @@ test.describe('Navigation', () => {
 });
 
 test.describe('Rules marketplace — placeholder', () => {
-  test('rules marketplace renders real rule catalog (not placeholder)', async ({ page }) => {
+  test('rules marketplace renders real set-based catalog (not placeholder)', async ({ page }) => {
     await page.goto('/rules');
-    // /rules is now a real page backed by /api/rules, not the V2 placeholder.
+    // /rules is now a real page backed by /api/rule-sets, not the V2 placeholder.
     await expect(page.getByRole('heading', { name: '规则市场' })).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/共\s+\d+\s+条内置规则/)).toBeVisible();
-    await expect(page.locator('a.rule-card').first()).toBeVisible();
+    await expect(page.getByText(/共\s+\d+\s+个 set/)).toBeVisible();
+    await expect(page.locator('[data-set-card]').first()).toBeVisible();
   });
 });
 
-test.describe('Chat — placeholder', () => {
-  test('shows V2 placeholder', async ({ page }) => {
+test.describe('Chat page (replaces placeholder)', () => {
+  test('shows real chat UI with suggestions and quick keywords', async ({ page }) => {
     await page.goto('/chat');
-    await expect(page.getByText('下一阶段:')).toBeVisible();
-    await expect(page.locator('.pill-accent')).toContainText('V2');
+    await expect(page.getByRole('heading', { name: 'AI 规则助手' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByPlaceholder('输入消息')).toBeVisible();
+    await expect(page.getByRole('button', { name: /我想加强 SQL 注入检查/ })).toBeVisible();
   });
 });
 
