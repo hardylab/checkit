@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { Shell } from '../components/Shell';
 import { fetchRules, fetchRuleBody, type RuleDoc } from '../lib/api';
 import { useColumnLayout } from '../lib/use-column-layout';
@@ -62,9 +62,24 @@ export default function RulesPage() {
 
   const [hydrated, setHydrated] = useState(false);
 
+  // Refs to the columns we resize (so the hook reads width directly
+  // from the DOM rather than guessing sibling positions).
+  const sideRailRef = useRef<HTMLElement>(null);
+  const rulePaneRef = useRef<HTMLElement>(null);
+
   // Resizable columns with localStorage persistence.
-  const sideRail = useColumnLayout('side-rail', 240, { min: 160, max: 360, side: 'left' });
-  const rulePane = useColumnLayout('rule-pane', 360, { min: 240, max: 560, side: 'right' });
+  const sideRail = useColumnLayout({
+    columnRef: sideRailRef,
+    columnKey: 'side-rail',
+    defaultWidth: 240,
+    min: 160, max: 360, side: 'left',
+  });
+  const rulePane = useColumnLayout({
+    columnRef: rulePaneRef,
+    columnKey: 'rule-pane',
+    defaultWidth: 360,
+    min: 240, max: 560, side: 'right',
+  });
 
   useEffect(() => {
     fetchRules().then((d) => setAllRules(d.rules)).catch((e) => setError(e.message));
@@ -249,7 +264,12 @@ export default function RulesPage() {
     <Shell repo="rules-market">
       <div className="rules-shell">
         {/* ── Side rail (VSCode sidebar) ─────────────────────────── */}
-        <aside className="rules-side-rail" aria-label="规则分类导航" style={{ flex: `0 0 ${sideRail.width}px`, width: `${sideRail.width}px` }}>
+        <aside
+          ref={sideRailRef}
+          className="rules-side-rail"
+          aria-label="规则分类导航"
+          style={{ width: `${sideRail.width}px` }}
+        >
           <div className="rules-side-eyebrow">规则市场</div>
           <div className="rules-side-tabs" role="tablist" aria-label="规则范围">
             <button
@@ -294,10 +314,16 @@ export default function RulesPage() {
               </button>
             ))}
           </nav>
-        </aside>
 
-        {/* Resizer for side rail */}
-        <div className="rules-resizer rules-resizer-v" {...sideRail.resizerProps} aria-label="拖动调整侧边栏宽度" />
+          {/* Resizer on the right edge of the side rail.
+              Positioned absolutely so it doesn't consume flex space. */}
+          <div
+            className="rules-resizer rules-resizer-v"
+            style={{ right: 0 }}
+            {...sideRail.resizerProps}
+            aria-label="拖动调整侧边栏宽度"
+          />
+        </aside>
 
         {/* ── Main 2-pane (set list + rule list) ───────────────────── */}
         <main className="rules-market-main">
@@ -368,16 +394,23 @@ export default function RulesPage() {
                 </ul>
               </section>
 
-              {/* Resizer between set list and rule list */}
-              <div className="rules-resizer rules-resizer-v" {...rulePane.resizerProps} aria-label="拖动调整规则面板宽度" role="separator" />
-
               {/* Rule list (right) — only when a set is selected */}
               <section
+                ref={rulePaneRef}
                 className={`rules-rule-pane ${selectedSet ? 'open' : ''}`}
                 data-testid="rule-pane"
                 aria-hidden={!selectedSet}
                 style={{ width: rulePane.width }}
               >
+                {/* Resizer on the left edge of the rule pane.
+                    Positioned absolutely so it doesn't consume flex space. */}
+                <div
+                  className="rules-resizer rules-resizer-v"
+                  style={{ left: 0 }}
+                  {...rulePane.resizerProps}
+                  aria-label="拖动调整规则面板宽度"
+                  role="separator"
+                />
                 {selectedSet && (
                   <>
                     <header className="rules-pane-head">

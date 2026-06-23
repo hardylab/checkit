@@ -2,16 +2,23 @@
 // Drag-to-resize column widths with localStorage persistence.
 //
 // Usage:
-//   const { width, setWidth, resizerProps } = useColumnLayout('side-rail', 240, {
+//   const sideRailRef = useRef<HTMLDivElement>(null);
+//   const { width, resizerProps } = useColumnLayout({
+//     columnRef: sideRailRef,
+//     columnKey: 'side-rail',
+//     defaultWidth: 240,
 //     min: 160, max: 360, side: 'left',
 //   });
-//   <aside style={{ flex: `0 0 ${width}px`, width: `${width}px` }}>...</aside>
-//   <div {...resizerProps} data-resizer-for="side-rail" />  // resizer
+//   <aside ref={sideRailRef} style={{ width: `${width}px` }}>...</aside>
+//   <div {...resizerProps} data-resizer-for="side-rail" />
 //
-// Widths persist under key 'checkit:layout' as `{ [columnKey]: number }`.
+// Widths persist under localStorage key 'checkit:layout' as
+// `{ [columnKey]: number }`. The hook never queries the DOM — the
+// caller passes the column ref directly.
 
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { RefObject } from 'react';
 
 const STORAGE_KEY = 'checkit:layout';
 
@@ -33,14 +40,17 @@ function writeLayout(l: Layout) {
 }
 
 type Options = {
+  columnRef: RefObject<HTMLElement | null>;
+  columnKey: string;
+  defaultWidth: number;
   min?: number;
   max?: number;
   /** 'left' = drag right to widen; 'right' = drag left to widen. */
   side: 'left' | 'right';
 };
 
-export function useColumnLayout(columnKey: string, defaultWidth: number, options: Options) {
-  const { min = 160, max = 600, side } = options;
+export function useColumnLayout(options: Options) {
+  const { columnRef, columnKey, defaultWidth, min = 160, max = 600, side } = options;
   const [width, setWidthState] = useState<number>(defaultWidth);
 
   // Hydrate from localStorage after mount.
@@ -59,27 +69,21 @@ export function useColumnLayout(columnKey: string, defaultWidth: number, options
       e.stopPropagation();
       const startX = e.clientX;
       const startW = width;
-
       const sign = side === 'left' ? 1 : -1;
+      // Track the latest computed width in a closure-scoped variable
+      // so onUp can read it synchronously (React batches state updates,
+      // so the DOM offsetWidth is one render behind).
+      let lastW = startW;
 
       const onMove = (ev: MouseEvent) => {
         const delta = (ev.clientX - startX) * sign;
         const next = Math.round(Math.min(max, Math.max(min, startW + delta)));
+        lastW = next;
         setWidthState(next);
       };
 
       const onUp = () => {
-        // Persist via setState final value by reading computed width from
-        // the resizer's previous sibling (the column element).
-        const resizer = document.querySelector<HTMLElement>(`[data-resizer-for="${columnKey}"]`);
-        // Two layouts:
-        //   side='left': resizer comes AFTER the column → column is resizer.previousElementSibling
-        //   side='right': resizer comes BEFORE the column → column is resizer.nextElementSibling
-        const sibling = side === 'left'
-          ? resizer?.previousElementSibling
-          : resizer?.nextElementSibling;
-        const finalW = sibling instanceof HTMLElement ? sibling.offsetWidth : width;
-        const clamped = Math.round(Math.min(max, Math.max(min, finalW)));
+        const clamped = Math.round(Math.min(max, Math.max(min, lastW)));
         const l = readLayout();
         l[columnKey] = clamped;
         writeLayout(l);

@@ -525,20 +525,31 @@ main { grid-column: 2; grid-row: 2; overflow-y: auto; min-width: 0; }
 .rules-rule-pane.open { display: flex; }
 
 /* Column resizer — 4px wide vertical bar, invisible until hover */
+/* Column resizer — 4px wide vertical bar, absolute-positioned so it
+   takes no flex space. Two resizers live in the rules-shell:
+     - side-rail resizer sits at the right edge of .rules-side-rail
+     - rule-pane  resizer sits at the left  edge of .rules-rule-pane
+   The resizer is its own element; the column it belongs to is the
+   previousElementSibling (side-rail) or nextElementSibling (rule-pane)
+   of the resizer in the DOM, so the hook just measures DOM width.
+   Default state is fully transparent; only hover/active highlight. */
 .rules-resizer {
-  flex: 0 0 auto;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;            /* larger hit area than visible 2px */
   background: transparent;
-  position: relative;
   z-index: 2;
 }
 .rules-resizer-v {
-  width: 4px;
   cursor: col-resize;
 }
 .rules-resizer-v::before {
   content: '';
   position: absolute;
   inset: 0;
+  left: 3px;             /* center the 2px visible bar in the 8px hit area */
+  right: 3px;
   background: transparent;
   transition: background 0.15s var(--ease);
 }
@@ -548,6 +559,14 @@ main { grid-column: 2; grid-row: 2; overflow-y: auto; min-width: 0; }
   background: var(--accent);
 }
 .rules-resizer-v:focus-visible { outline: none; }
+
+/* Side rail needs position: relative so its right-edge resizer anchors. */
+.rules-side-rail {
+  position: relative;
+}
+.rules-rule-pane {
+  position: relative;
+}
 
 .rules-pane-head {
   padding: 18px 24px 14px;

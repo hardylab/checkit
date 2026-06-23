@@ -15,7 +15,15 @@ async function dragResizer(
   await page.mouse.down();
   await page.mouse.move(startX + deltaX, startY, { steps: 10 });
   await page.mouse.up();
-  await page.waitForTimeout(50);
+  // Wait for React to flush the final setWidthState to the DOM
+  // (state updates in mouseup handlers are batched in React 18+).
+  await page.waitForFunction(
+    () => {
+      const w = parseInt(localStorage.getItem('checkit:layout') ?? '{}', 10);
+      return !isNaN(w) && Object.keys(JSON.parse(localStorage.getItem('checkit:layout') ?? '{}')).length > 0;
+    },
+    { timeout: 1000 }
+  ).catch(() => { /* may already be written */ });
 }
 
 test.describe('Column resizers', () => {
@@ -25,10 +33,19 @@ test.describe('Column resizers', () => {
     await page.reload();
   });
 
-  test('side-rail resizer exists and is 4px wide', async ({ page }) => {
+  test('side-rail resizer exists and is 8px wide (hit area) + absolute positioned', async ({ page }) => {
     await expect(page.locator('[data-resizer-for="side-rail"]')).toBeVisible();
     const box = await page.locator('[data-resizer-for="side-rail"]').boundingBox();
-    expect(box?.width).toBe(4);
+    // Hit area is 8px (4px visible bar in the middle, 3px padding each side).
+    expect(box?.width).toBe(8);
+    // It must NOT take flex space — absolute positioning only.
+    const position = await page.locator('[data-resizer-for="side-rail"]').evaluate((el) => getComputedStyle(el).position);
+    expect(position).toBe('absolute');
+    // The resizer must not push the side rail's right edge past its declared width.
+    const rail = await page.locator('.rules-side-rail').boundingBox();
+    const resizer = await page.locator('[data-resizer-for="side-rail"]').boundingBox();
+    // Resizer sits at right:0 of the rail — its left edge is 4px inside the rail.
+    expect(Math.round(rail!.x + rail!.width - resizer!.x)).toBe(8);
   });
 
   test('resizer is transparent by default and only highlights on hover', async ({ page }) => {
@@ -56,11 +73,30 @@ test.describe('Column resizers', () => {
     await expect(page.locator('[data-resizer-for="rule-pane"]')).toBeVisible();
   });
 
+  test('resizers do not take flex space (overlap column borders, no width stolen)', async ({ page }) => {
+    await page.getByTestId('cat-security').click();
+    await page.getByTestId('set-security-baseline').click();
+
+    // Both columns render their declared widths with no extra room for resizers.
+    const railW = await page.evaluate(() => document.querySelector('.rules-side-rail').getBoundingClientRect().width);
+    const ruleW = await page.evaluate(() => document.querySelector('[data-testid="rule-pane"]').getBoundingClientRect().width);
+    const shellW = await page.evaluate(() => document.querySelector('.rules-shell').getBoundingClientRect().width);
+
+    // Market-main is flex: 1 1 auto, so it fills shell minus side rail width.
+    const marketW = await page.evaluate(() => document.querySelector('.rules-market-main').getBoundingClientRect().width);
+    expect(marketW).toBeCloseTo(shellW - railW, 0);
+
+    // Market-main contains set-pane (flex 1) + rule-pane (fixed width).
+    // Their sum must equal market-main's width — resizers do NOT contribute.
+    const setPaneW = await page.evaluate(() => document.querySelector('.rules-set-pane').getBoundingClientRect().width);
+    expect(setPaneW + ruleW).toBeCloseTo(marketW, 0);
+  });
+
   test('dragging side-rail resizer right widens the side rail', async ({ page }) => {
     const before = await page.evaluate(() => document.querySelector('.rules-side-rail')!.getBoundingClientRect().width);
     await dragResizer(page, 'side-rail', 60);
+    await expect.poll(async () => page.evaluate(() => document.querySelector('.rules-side-rail')!.getBoundingClientRect().width), { timeout: 2_000 }).toBeGreaterThan(before);
     const after = await page.evaluate(() => document.querySelector('.rules-side-rail')!.getBoundingClientRect().width);
-    expect(after).toBeGreaterThan(before);
     // Should be ~300 (default 240 + 60)
     expect(Math.round(after)).toBeGreaterThanOrEqual(298);
     expect(Math.round(after)).toBeLessThanOrEqual(305);
@@ -68,6 +104,7 @@ test.describe('Column resizers', () => {
 
   test('dragging side-rail resizer left narrows but clamps at min (160)', async ({ page }) => {
     await dragResizer(page, 'side-rail', -200); // way past min
+    await expect.poll(async () => page.evaluate(() => Math.round(document.querySelector('.rules-side-rail')!.getBoundingClientRect().width)), { timeout: 2_000 }).toBeLessThanOrEqual(165);
     const w = await page.evaluate(() => document.querySelector('.rules-side-rail')!.getBoundingClientRect().width);
     expect(Math.round(w)).toBeGreaterThanOrEqual(160);
     expect(Math.round(w)).toBeLessThanOrEqual(165);
