@@ -1,0 +1,77 @@
+name: checkit-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r test
+        # Allow backend CLI test that runs checkit against the repo root.
+        # Some failures are expected on first run (self-check) — exit code
+        # may be non-zero. We only care that the unit suites pass.
+      - name: Backend unit tests only
+        run: pnpm --filter @checkit/cli test
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - name: Build CLI for E2E fixture data
+        run: pnpm --filter @checkit/cli build
+      - name: Install Playwright browsers
+        run: pnpm --filter @checkit/desktop exec playwright install --with-deps chromium
+      - name: Run E2E tests
+        run: pnpm --filter @checkit/desktop test:e2e
+      - name: Upload HTML report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/desktop/playwright-report/
+          retention-days: 7
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [unit, e2e]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @checkit/desktop build
+      - name: Upload Next.js build
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-static-build
+          path: apps/desktop/out/
+          retention-days: 7

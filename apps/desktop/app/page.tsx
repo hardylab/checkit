@@ -181,10 +181,10 @@ export default function HomePage() {
               </div>
             </div>
             <div className="summary-grid">
-              <div className="summary-cell"><div className="summary-label">问题总数</div><div className="summary-value">{issues.length}</div></div>
-              <div className="summary-cell"><div className="summary-label">严重 / 警告 / 提示</div><div className="summary-value">{errors} / {warnings} / {infos}</div></div>
-              <div className="summary-cell"><div className="summary-label">涉及文件</div><div className="summary-value">{files}</div></div>
-              <div className="summary-cell"><div className="summary-label">可自动修复</div><div className="summary-value">{fixable}</div></div>
+              <div className="summary-cell"><div className="summary-label">问题总数</div><div className="summary-value" id="total-count">{issues.length}</div></div>
+              <div className="summary-cell"><div className="summary-label">严重 / 警告 / 提示</div><div className="summary-value" id="severity-counts">{errors} / {warnings} / {infos}</div></div>
+              <div className="summary-cell"><div className="summary-label">涉及文件</div><div className="summary-value" id="files-count">{files}</div></div>
+              <div className="summary-cell"><div className="summary-label">可自动修复</div><div className="summary-value" id="fixable-count">{fixable}</div></div>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>
               <button className="btn btn-primary" type="button" onClick={() => runScan(scanCwd ?? undefined, true)} disabled={!isElectron || fixable === 0}>
@@ -200,8 +200,8 @@ export default function HomePage() {
             {(['all', 'error', 'warning', 'info'] as const).map((lv) => {
               const cnt = lv === 'all' ? issues.length : issues.filter((i) => i.level === lv).length;
               return (
-                <button key={lv} className={`issue-tab ${selectedLevel === lv ? 'active' : ''}`} onClick={() => setSelectedLevel(lv)}>
-                  {lv === 'all' ? '全部' : lv === 'error' ? '严重' : lv === 'warning' ? '警告' : '提示'} <span className="count">{cnt}</span>
+                                <button key={lv} className={`issue-tab ${selectedLevel === lv ? 'active' : ''}`} onClick={() => setSelectedLevel(lv)}>
+                  {lv === 'all' ? '全部' : lv === 'error' ? '严重' : lv === 'warning' ? '警告' : '提示'} <span className="count" id={`cnt-${lv}`}>{cnt}</span>
                 </button>
               );
             })}

@@ -43,6 +43,34 @@ pnpm --filter @checkit/desktop dev
 The Electron main process waits for port 3210 to be open before
 launching the window (`wait-on tcp:3210`).
 
+## End-to-end tests
+
+Playwright tests cover all four routes and the interactions between
+them. They run against the Next.js dev server (no Electron required).
+
+```bash
+# one-time: install chromium
+pnpm --filter @checkit/desktop exec playwright install --with-deps chromium
+
+# run tests
+pnpm --filter @checkit/desktop test:e2e
+```
+
+Coverage (42 cases, runs in ~30s):
+
+- `dashboard.spec.ts` — empty state, loaded state, score ring, severity
+  tabs, category filter, issue row → detail panel, AI-Fix CTA, ignore
+  button, reset
+- `ai-fix.spec.ts` — plan + impact estimate, diff rendering, unified vs
+  split toggle, back navigation, copy / apply buttons, missing-idx fallback
+- `routes.spec.ts` — all 4 routes load, navigation between them,
+  responsive (mobile collapses to single column), theme toggle
+
+Tests use the system Chrome (`channel: 'chrome'`) instead of bundled
+chromium so the bundle doesn't need to be downloaded.
+
+CI: see `.github/workflows/ci.yml` — `e2e` job runs on every PR.
+
 ## Build for distribution
 
 ```bash

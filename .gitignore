@@ -52,3 +52,9 @@ test-results/
 # Build artifacts
 *.tgz
 packages/*/dist/
+apps/desktop/out/
+apps/desktop/.next/
+apps/desktop/dist-electron/
+apps/desktop/test-results/
+apps/desktop/playwright-report/
+apps/desktop/playwright/.cache/
