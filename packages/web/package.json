@@ -1,0 +1,10 @@
+{
+  "name": "@checkit/web",
+  "version": "0.0.1",
+  "description": "Checkit Web UI — companion viewer for checkit --reporter json output. Open the bundled HTML directly in a browser; no build step.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "echo 'Open packages/web/index.html in your browser. No build step needed.'"
+  }
+}
