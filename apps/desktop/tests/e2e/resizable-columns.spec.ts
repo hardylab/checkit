@@ -31,6 +31,21 @@ test.describe('Column resizers', () => {
     expect(box?.width).toBe(4);
   });
 
+  test('resizer is transparent by default and only highlights on hover', async ({ page }) => {
+    const resizer = page.locator('[data-resizer-for="side-rail"]');
+    // Default state — the pseudo-element ::before is fully transparent.
+    // Browsers normalize this to either rgba(0,0,0,0) or oklab(0 0 0 / 0).
+    const defaultBg = await resizer.evaluate((el) => getComputedStyle(el, '::before').backgroundColor);
+    expect(defaultBg).toMatch(/rgba\(0, 0, 0, 0\)|oklab\(0 0 0 \/ 0\)|transparent/);
+
+    // On hover — the pseudo-element becomes the sage-green accent.
+    // It must no longer be fully transparent, but the exact color
+    // depends on the browser (rgb / oklch / oklab).
+    await resizer.hover();
+    const hoverBg = await resizer.evaluate((el) => getComputedStyle(el, '::before').backgroundColor);
+    expect(hoverBg).not.toMatch(/rgba\(0, 0, 0, 0\)|oklab\(0 0 0 \/ 0\)|transparent/);
+  });
+
   test('rule-pane resizer appears when a set is selected', async ({ page }) => {
     // No resizer visible initially — rule-pane is hidden
     await expect(page.locator('[data-resizer-for="rule-pane"]')).toHaveCount(0);
