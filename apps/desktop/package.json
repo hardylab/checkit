@@ -1,0 +1,27 @@
+{
+  "name": "@checkit/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Electron + Next.js desktop shell for checkit. Spawns the local checkit CLI, parses --reporter json output, renders in a native window.",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev:next": "next dev -p 3210",
+    "dev:electron": "wait-on tcp:3210 && electron .",
+    "dev": "concurrently -k -n NEXT,ELECTRON -c blue,magenta \"pnpm run dev:next\" \"pnpm run dev:electron\"",
+    "build:next": "next build",
+    "build": "pnpm run build:next",
+    "package": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "dependencies": {
+    "@checkit/cli": "workspace:*"
+  },
+  "devDependencies": {
+    "next": "^14.2.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3",
+    "concurrently": "^8.2.2"
+  }
+}
