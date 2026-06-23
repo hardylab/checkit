@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { Shell, LoadingOverlay } from './components/Shell';
 import { CATEGORIES, type Issue, type CategoryKey, categorizeIssue, computeHealth, groupBy, normalizeReport } from './lib/report';
+import { scanProject, pickFolder, fetchRules, type RuleDoc } from './lib/api';
 
 const STORAGE_KEY = 'checkit:last-report';
 
@@ -13,6 +14,12 @@ export default function HomePage() {
   const [selectedCategory, setSelectedCategory] = useState<CategoryKey>('all');
   const [selectedLevel, setSelectedLevel] = useState<'all' | Issue['level']>('all');
   const [selectedIdx, setSelectedIdx] = useState<number>(-1);
+  const [rules, setRules] = useState<RuleDoc[]>([]);
+
+  // Load rule catalog (for the count badge + rule list linking)
+  useEffect(() => {
+    fetchRules().then((d) => setRules(d.rules)).catch(() => {});
+  }, []);
 
   // Restore last report from localStorage on mount
   useEffect(() => {
@@ -29,23 +36,23 @@ export default function HomePage() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(r)); } catch {}
   }, []);
 
-  // Real CLI scan via Electron IPC
+  // Real CLI scan — uses window.checkit if available (Electron), else /api/scan
   const runScan = useCallback(async (cwd?: string, aiFix = false) => {
-    if (typeof window === 'undefined' || !window.checkit) {
-      alert('Electron bridge not available. Are you running outside Electron?');
+    if (!cwd) {
+      alert('请先选择一个项目目录');
       return;
     }
     setLoading(true);
     try {
-      const result = await window.checkit.scan({ cwd, aiFix });
+      const result = await scanProject({ cwd, aiFix });
       if (result.ok && result.issues) {
-        const source = cwd || 'scan';
+        const source = cwd;
         const r = { issues: result.issues, source };
         setReport(r);
         persist(r);
         setSelectedIdx(-1);
       } else {
-        const reason = result.parseError || result.stderr || `exit ${result.exitCode}`;
+        const reason = result.parseError || result.stderr || result.error || `exit ${result.exitCode}`;
         alert(`扫描失败: ${reason}`);
       }
     } catch (e: any) {
@@ -55,17 +62,18 @@ export default function HomePage() {
     }
   }, [persist]);
 
-  const pickFolder = useCallback(async () => {
-    if (typeof window === 'undefined' || !window.checkit) return;
-    const folder = await window.checkit.pickFolder();
+  const chooseFolder = useCallback(async () => {
+    const folder = await pickFolder();
     if (folder) {
       setScanCwd(folder);
-      runScan(folder, false);
     }
-  }, [runScan]);
+  }, []);
 
   const pickJson = useCallback(async () => {
-    if (typeof window === 'undefined' || !window.checkit) return;
+    if (typeof window === 'undefined' || !window.checkit) {
+      alert('JSON 导入仅在 Electron 桌面版可用。请用"扫描"按钮实时跑 checkit。');
+      return;
+    }
     const result = await window.checkit.pickJson();
     if (!result) return;
     if ('error' in result) { alert(result.error); return; }
@@ -97,18 +105,29 @@ export default function HomePage() {
                 : '当前不在 Electron 中运行 —— 用 file:// 直接打开的话只能拖入 JSON 报告。'}
             </p>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-              <button className="btn btn-primary" type="button" onClick={pickFolder} disabled={!isElectron}>
+              <button className="btn btn-primary" type="button" onClick={chooseFolder} disabled={!isElectron && typeof window !== 'undefined'}>
                 选择项目目录
               </button>
-              <button className="btn" type="button" onClick={pickJson}>
+              {scanCwd && (
+                <button className="btn" type="button" onClick={() => runScan(scanCwd, false)}>
+                  扫描
+                </button>
+              )}
+              <button className="btn" type="button" onClick={pickJson} disabled={!isElectron}>
                 导入 JSON 报告
               </button>
             </div>
             {scanCwd && (
-              <p style={{ marginTop: 16, fontSize: 12, color: 'var(--muted)' }}>
-                当前扫描: <code>{scanCwd}</code>
-              </p>
+              <div style={{ marginTop: 16, fontSize: 12, color: 'var(--muted)' }}>
+                <div>当前目录:</div>
+                <code style={{ fontFamily: 'var(--font-mono)', fontSize: 11, wordBreak: 'break-all', display: 'block', marginTop: 4, padding: 8, background: 'var(--surface-2)', borderRadius: 'var(--r-sm)' }}>{scanCwd}</code>
+              </div>
             )}
+            <p style={{ marginTop: 16, fontSize: 12, color: 'var(--muted)' }}>
+              {isElectron
+                ? 'checkit 内置 30 条规则,从 packages/backend/src/rules/ 实时加载。'
+                : '浏览器模式下只能选目录后输入路径(权限限制)。Electron 桌面版可原生选目录 + 选 JSON。'}
+            </p>
           </div>
         </section>
         {loading && <LoadingOverlay text="Scanning…" />}
@@ -184,7 +203,7 @@ export default function HomePage() {
               <div className="summary-cell"><div className="summary-label">问题总数</div><div className="summary-value" id="total-count">{issues.length}</div></div>
               <div className="summary-cell"><div className="summary-label">严重 / 警告 / 提示</div><div className="summary-value" id="severity-counts">{errors} / {warnings} / {infos}</div></div>
               <div className="summary-cell"><div className="summary-label">涉及文件</div><div className="summary-value" id="files-count">{files}</div></div>
-              <div className="summary-cell"><div className="summary-label">可自动修复</div><div className="summary-value" id="fixable-count">{fixable}</div></div>
+              <div className="summary-cell"><div className="summary-label">已加载规则</div><div className="summary-value" id="fixable-count"><Link href="/rules" style={{ color: 'var(--accent)' }}>{rules.length || '…'} →</Link></div></div>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>
               <button className="btn btn-primary" type="button" onClick={() => runScan(scanCwd ?? undefined, true)} disabled={!isElectron || fixable === 0}>

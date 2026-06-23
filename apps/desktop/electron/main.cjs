@@ -8,7 +8,7 @@ const { spawn } = require('node:child_process');
 const { pathToFileURL } = require('node:url');
 
 const isDev = !app.isPackaged;
-const DEV_URL = 'http://localhost:3210';
+const DEV_URL = 'http://localhost:3000';
 
 let mainWindow = null;
 

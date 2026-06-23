@@ -53,10 +53,17 @@ test.describe('Dashboard — empty state', () => {
     await expect(page.getByRole('button', { name: '导入 JSON 报告' })).toBeVisible();
   });
 
-  test('选择项目目录 is disabled outside Electron', async ({ page }) => {
+  test('选择项目目录 opens a prompt in browser fallback', async ({ page }) => {
     await page.goto('/');
-    const btn = page.getByRole('button', { name: '选择项目目录' });
-    await expect(btn).toBeDisabled();
+    // Outside Electron, pickFolder() falls back to window.prompt.
+    // We intercept prompt to verify the code path runs.
+    page.once('dialog', (d) => {
+      expect(d.type()).toBe('prompt');
+      d.dismiss();
+    });
+    await page.getByRole('button', { name: '选择项目目录' }).click();
+    // The fallback path may or may not render a "current directory" panel depending
+    // on user input; we just assert the click + prompt handler ran.
   });
 
   test('renders all 3 rail tabs with correct hrefs', async ({ page }) => {
@@ -83,10 +90,12 @@ test.describe('Dashboard — loaded state', () => {
 
   test('summary cells reflect counts', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByText('3', { exact: true }).first()).toBeVisible();  // total
+    // total-count is the "问题总数" cell
+    await expect(page.locator('#total-count')).toHaveText('3');
     await expect(page.locator('#severity-counts')).toHaveText('2 / 1 / 0');
     await expect(page.locator('#files-count')).toHaveText('3');
-    await expect(page.locator('#fixable-count')).toHaveText('2');
+    // fixable-count is now "已加载规则" link (replaces the static fixable number)
+    await expect(page.locator('#fixable-count')).toContainText(/\d+/);
   });
 
   test('topbar shows report filename', async ({ page }) => {

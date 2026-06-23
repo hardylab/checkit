@@ -5,8 +5,8 @@
   "description": "Electron + Next.js desktop shell for checkit. Spawns the local checkit CLI, parses --reporter json output, renders in a native window.",
   "main": "electron/main.cjs",
   "scripts": {
-    "dev:next": "next dev -p 3210",
-    "dev:electron": "wait-on tcp:3210 && electron .",
+    "dev:next": "next dev -p 3000",
+    "dev:electron": "wait-on tcp:3000 && electron .",
     "dev": "concurrently -k -n NEXT,ELECTRON -c blue,magenta \"pnpm run dev:next\" \"pnpm run dev:electron\"",
     "build:next": "next build",
     "build": "pnpm run build:next",

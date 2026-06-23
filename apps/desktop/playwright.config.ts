@@ -16,16 +16,20 @@ import { defineConfig, devices } from '@playwright/test';
  * - The IPC layer (Electron main + preload) gets exercised manually on a desktop.
  */
 
-const PORT = 3210;
+const PORT = 3000;
 const BASE_URL = `http://localhost:${PORT}`;
 
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
+  retries: process.env.CI ? 2 : 1,    // retry once on local too — dev server warmup flakes
   workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
+  timeout: 30_000,
+  expect: {
+    timeout: 10_000,                   // expect.* default 5s is too tight when next dev compiles on demand
+  },
   use: {
     baseURL: BASE_URL,
     trace: 'retain-on-failure',

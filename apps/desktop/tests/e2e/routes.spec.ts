@@ -49,11 +49,12 @@ test.describe('Navigation', () => {
 });
 
 test.describe('Rules marketplace — placeholder', () => {
-  test('shows V2 placeholder', async ({ page }) => {
+  test('rules marketplace renders real rule catalog (not placeholder)', async ({ page }) => {
     await page.goto('/rules');
-    await expect(page.getByText('下一阶段:')).toBeVisible();
-    await expect(page.getByRole('link', { name: '回到主控台' })).toBeVisible();
-    await expect(page.locator('.pill-accent')).toContainText('V2');
+    // /rules is now a real page backed by /api/rules, not the V2 placeholder.
+    await expect(page.getByRole('heading', { name: '规则市场' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/共\s+\d+\s+条内置规则/)).toBeVisible();
+    await expect(page.locator('a.rule-card').first()).toBeVisible();
   });
 });
 
