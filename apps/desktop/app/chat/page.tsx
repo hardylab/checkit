@@ -32,6 +32,8 @@ export default function ChatPage() {
   const [installedSets, setInstalledSets] = useState<Set<string>>(new Set());
   const scrollerRef = useRef<HTMLDivElement>(null);
 
+  const [hydrated, setHydrated] = useState(false);
+
   // Restore history + installed list
   useEffect(() => {
     try {
@@ -52,13 +54,15 @@ export default function ChatPage() {
         if (Array.isArray(arr)) setInstalledSets(new Set(arr));
       }
     } catch {}
+    setHydrated(true);
   }, []);
 
-  // Persist + scroll
+  // Persist + scroll — only after hydration so we don't clobber stored state.
   useEffect(() => {
+    if (!hydrated) return;
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.slice(-50))); } catch {}
     if (scrollerRef.current) scrollerRef.current.scrollTop = scrollerRef.current.scrollHeight;
-  }, [messages]);
+  }, [messages, hydrated]);
 
   const send = async (text: string) => {
     const trimmed = text.trim();

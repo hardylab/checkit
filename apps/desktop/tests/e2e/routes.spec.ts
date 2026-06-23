@@ -26,7 +26,9 @@ test.describe('Navigation', () => {
     await page.goto('/');
     await page.getByRole('link', { name: '规则市场' }).first().click();
     await page.waitForURL(/\/rules/);
-    await expect(page.getByRole('heading', { name: '规则市场' })).toBeVisible();
+    // /rules now uses a VSCode-style side rail; the visible "规则市场"
+    // label lives in the side rail eyebrow (.rules-side-eyebrow), not a heading.
+    await expect(page.locator('.rules-side-eyebrow')).toContainText('规则市场');
   });
 
   test('chat tab navigates to /chat', async ({ page }) => {
@@ -49,12 +51,15 @@ test.describe('Navigation', () => {
 });
 
 test.describe('Rules marketplace — placeholder', () => {
-  test('rules marketplace renders real set-based catalog (not placeholder)', async ({ page }) => {
+  test('rules marketplace renders VSCode-style marketplace with side rail + set pane', async ({ page }) => {
     await page.goto('/rules');
-    // /rules is now a real page backed by /api/rule-sets, not the V2 placeholder.
-    await expect(page.getByRole('heading', { name: '规则市场' })).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/共\s+\d+\s+个 set/)).toBeVisible();
-    await expect(page.locator('[data-set-card]').first()).toBeVisible();
+    // "规则市场" lives in the side rail eyebrow, not a heading.
+    await expect(page.locator('.rules-side-eyebrow')).toContainText('规则市场', { timeout: 10_000 });
+    // Side rail should show scope tabs + category nav
+    await expect(page.getByRole('tab', { name: '我的规则' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: '所有规则' })).toBeVisible();
+    // Wait for the side rail to finish populating categories after the initial render
+    await expect(page.getByTestId('cat-security')).toBeVisible({ timeout: 10_000 });
   });
 });
 

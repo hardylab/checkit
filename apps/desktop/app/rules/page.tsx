@@ -1,6 +1,5 @@
 'use client';
 import React, { useEffect, useState, useMemo } from 'react';
-import Link from 'next/link';
 import { Shell } from '../components/Shell';
 import { fetchRules, fetchRuleBody, type RuleDoc } from '../lib/api';
 import {
@@ -8,16 +7,10 @@ import {
   type RuleSet, type RuleSetCategory,
 } from '../lib/rule-sets';
 
-type Tab = 'mine' | 'all';
+type Scope = 'mine' | 'all';
 
 const SOURCE_LABEL: Record<RuleSet['source'], string> = {
   official: '官方', community: '社区', team: '团队',
-};
-
-const SOURCE_PILL: Record<RuleSet['source'], string> = {
-  official: 'pill pill-accent',
-  community: 'pill',
-  team: 'pill pill-warn',
 };
 
 const SEVERITY_PILL: Record<RuleDoc['severity'], string> = {
@@ -27,106 +20,114 @@ const SEVERITY_LABEL: Record<RuleDoc['severity'], string> = {
   error: '严重', warning: '警告', info: '提示',
 };
 
-type RuleConfig = { enabled: boolean; threshold: RuleDoc['severity']; globs: string[] };
-const CONFIG_KEY = 'checkit:rule-config';
-const INSTALLED_KEY = 'checkit:installed-rules';
+const RULE_CONFIG_KEY = 'checkit:rule-config';
+const INSTALLED_RULES_KEY = 'checkit:installed-rules';
 const INSTALLED_SETS_KEY = 'checkit:installed-sets';
 const DEFAULT_GLOBS = ['src/**/*.{ts,tsx}', 'app/**'];
 
+// Inline SVG icons matching the prototype's set icon family.
+// Use createElement instead of JSX so a single key can hold multiple <path>/<rect> elements.
+const e = React.createElement;
+const ICONS: Record<string, React.ReactNode> = {
+  盾: e('path', { d: 'M12 2.5 4.5 5.5v6c0 5 3.2 9.4 7.5 10.5 4.3-1.1 7.5-5.5 7.5-10.5v-6L12 2.5Z' }),
+  TS: e('path', { d: 'M3 4h18v3h-7v13h-4V7H3V4Z' }),
+  模: e(React.Fragment, null, e('rect', { x: '3', y: '3', width: '7', height: '7', rx: '1' }), e('rect', { x: '14', y: '3', width: '7', height: '7', rx: '1' }), e('rect', { x: '3', y: '14', width: '7', height: '7', rx: '1' }), e('rect', { x: '14', y: '14', width: '7', height: '7', rx: '1' })),
+  文: e(React.Fragment, null, e('path', { d: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' }), e('path', { d: 'M14 2v6h6' }), e('path', { d: 'M8 13h8M8 17h6' })),
+  测: e(React.Fragment, null, e('path', { d: 'M9 2v6L4 18a2 2 0 0 0 2 3h12a2 2 0 0 0 2-3l-5-10V2' }), e('path', { d: 'M7 2h10' }), e('path', { d: 'M3 22h18' })),
+  整: e('path', { d: 'M3 6h18M3 12h12M3 18h18' }),
+  配: e(React.Fragment, null, e('circle', { cx: '12', cy: '12', r: '3' }), e('path', { d: 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z' })),
+  档: e(React.Fragment, null, e('path', { d: 'M4 19.5A2.5 2.5 0 0 1 6.5 17H20' }), e('path', { d: 'M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z' })),
+  流: e('path', { d: 'M2 12h6l3-9 4 18 3-9h4' }),
+  鲜: e(React.Fragment, null, e('circle', { cx: '12', cy: '12', r: '9' }), e('path', { d: 'M12 7v5l3 2' })),
+};
+
+type RuleConfig = { enabled: boolean; threshold: RuleDoc['severity']; globs: string[] };
+
 export default function RulesPage() {
-  const [tab, setTab] = useState<Tab>('all');
-  const [activeCat, setActiveCat] = useState<RuleSetCategory | 'all'>('all');
-  const [query, setQuery] = useState('');
+  const [scope, setScope] = useState<Scope>('all');
+  const [activeCat, setActiveCat] = useState<RuleSetCategory | null>(null);
+  const [selectedSetId, setSelectedSetId] = useState<string | null>(null);
   const [installedRules, setInstalledRules] = useState<Set<string>>(new Set());
   const [installedSets, setInstalledSets] = useState<Set<string>>(new Set());
+  const [configs, setConfigs] = useState<Record<string, RuleConfig>>({});
+  const [allRules, setAllRules] = useState<RuleDoc[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // Drawer state — points at a rule INSIDE a set
+  // Drawer
   const [drawerRule, setDrawerRule] = useState<RuleDoc | null>(null);
   const [drawerSet, setDrawerSet] = useState<RuleSet | null>(null);
   const [drawerBody, setDrawerBody] = useState<string | null>(null);
   const [drawerConfig, setDrawerConfig] = useState<RuleConfig | null>(null);
-  const [configs, setConfigs] = useState<Record<string, RuleConfig>>({});
-  const [allRules, setAllRules] = useState<RuleDoc[]>([]);
+
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     fetchRules().then((d) => setAllRules(d.rules)).catch((e) => setError(e.message));
     try {
-      const s = localStorage.getItem(CONFIG_KEY);
+      const s = localStorage.getItem(RULE_CONFIG_KEY);
       if (s) setConfigs(JSON.parse(s));
-      const ir = localStorage.getItem(INSTALLED_KEY);
+      const ir = localStorage.getItem(INSTALLED_RULES_KEY);
       if (ir) { const a = JSON.parse(ir); if (Array.isArray(a)) setInstalledRules(new Set(a)); }
       const is = localStorage.getItem(INSTALLED_SETS_KEY);
       if (is) { const a = JSON.parse(is); if (Array.isArray(a)) setInstalledSets(new Set(a)); }
     } catch {}
+    // Mark hydrated AFTER the initial localStorage read so the persist
+    // effects below don't immediately overwrite stored data with the
+    // default empty state.
+    setHydrated(true);
   }, []);
 
-  // Persist
-  useEffect(() => {
-    try { localStorage.setItem(CONFIG_KEY, JSON.stringify(configs)); } catch {}
-  }, [configs]);
-  useEffect(() => {
-    try { localStorage.setItem(INSTALLED_KEY, JSON.stringify([...installedRules])); } catch {}
-  }, [installedRules]);
-  useEffect(() => {
-    try { localStorage.setItem(INSTALLED_SETS_KEY, JSON.stringify([...installedSets])); } catch {}
-  }, [installedSets]);
+  // Persist — only AFTER hydration so we don't clobber stored state.
+  useEffect(() => { if (hydrated) try { localStorage.setItem(RULE_CONFIG_KEY, JSON.stringify(configs)); } catch {} }, [configs, hydrated]);
+  useEffect(() => { if (hydrated) try { localStorage.setItem(INSTALLED_RULES_KEY, JSON.stringify([...installedRules])); } catch {} }, [installedRules, hydrated]);
+  useEffect(() => { if (hydrated) try { localStorage.setItem(INSTALLED_SETS_KEY, JSON.stringify([...installedSets])); } catch {} }, [installedSets, hydrated]);
 
-  // Filter sets
-  const visibleSets = useMemo(() => {
-    let s = RULE_SETS;
-    if (tab === 'mine') s = s.filter((x) => installedSets.has(x.id));
-    if (activeCat !== 'all') s = s.filter((x) => x.category === activeCat);
-    if (query.trim()) {
-      const q = query.toLowerCase();
-      s = s.filter((x) =>
-        x.name.toLowerCase().includes(q) ||
-        x.id.toLowerCase().includes(q) ||
-        x.description.toLowerCase().includes(q));
+  // Side-rail categories: built from RULE_SETS, with per-category counts in current scope
+  const cats = useMemo(() => {
+    const map = new Map<RuleSetCategory, number>();
+    for (const s of RULE_SETS) {
+      if (scope === 'mine' && !installedSets.has(s.id)) continue;
+      map.set(s.category, (map.get(s.category) ?? 0) + 1);
     }
-    return s;
-  }, [tab, activeCat, query, installedSets]);
+    return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
+  }, [scope, installedSets]);
 
-  const installedCount = RULE_SETS.filter((s) => installedSets.has(s.id)).length;
-
-  // Toggle whole set (install all / uninstall all)
-  const toggleSet = (set: RuleSet, on: boolean) => {
-    if (on) {
-      setInstalledSets((prev) => new Set([...prev, set.id]));
-      setInstalledRules((prev) => new Set([...prev, ...set.ruleIds]));
-    } else {
-      setInstalledSets((prev) => { const next = new Set(prev); next.delete(set.id); return next; });
-      setInstalledRules((prev) => {
-        const next = new Set(prev);
-        for (const id of set.ruleIds) next.delete(id);
-        return next;
-      });
+  // When the active category disappears (e.g. switch to mine and no installed sets in that cat), reset selection
+  useEffect(() => {
+    if (activeCat && !cats.find(([c]) => c === activeCat)) {
+      setActiveCat(null);
+      setSelectedSetId(null);
     }
-  };
+  }, [activeCat, cats]);
+
+  const setsInActiveCat = useMemo(() => {
+    if (!activeCat) return [];
+    return RULE_SETS.filter((s) => s.category === activeCat && (scope === 'all' || installedSets.has(s.id)));
+  }, [activeCat, scope, installedSets]);
+
+  const selectedSet = useMemo(
+    () => setsInActiveCat.find((s) => s.id === selectedSetId) ?? null,
+    [setsInActiveCat, selectedSetId]
+  );
 
   // Drawer helpers
   const openRule = (rule: RuleDoc, parent: RuleSet) => {
     setDrawerRule(rule);
     setDrawerSet(parent);
-    setDrawerConfig(configs[rule.id] ?? {
-      enabled: true,
-      threshold: rule.severity,
-      globs: [...DEFAULT_GLOBS],
-    });
+    setDrawerConfig(configs[rule.id] ?? { enabled: true, threshold: rule.severity, globs: [...DEFAULT_GLOBS] });
     setDrawerBody(null);
     fetchRuleBody(rule.id).then(setDrawerBody).catch(() => setDrawerBody(null));
   };
   const closeDrawer = () => { setDrawerRule(null); setDrawerSet(null); };
 
   const saveConfig = () => {
-    if (!drawerRule || !drawerSet) return;
+    if (!drawerRule) return;
     const enabledEl = document.querySelector<HTMLInputElement>('[data-testid="drawer-enabled"]');
     const finalEnabled = enabledEl ? enabledEl.checked : (drawerConfig?.enabled ?? true);
     const cfg: RuleConfig = drawerConfig
       ? { ...drawerConfig, enabled: finalEnabled }
       : { enabled: finalEnabled, threshold: drawerRule.severity, globs: [...DEFAULT_GLOBS] };
     setConfigs((c) => ({ ...c, [drawerRule.id]: cfg }));
-    // sync to installed list
     setInstalledRules((prev) => {
       const next = new Set(prev);
       if (finalEnabled) next.add(drawerRule.id); else next.delete(drawerRule.id);
@@ -138,9 +139,7 @@ export default function RulesPage() {
     if (!drawerRule) return;
     setDrawerConfig({ enabled: true, threshold: drawerRule.severity, globs: [...DEFAULT_GLOBS] });
   };
-  const updateConfig = (patch: Partial<RuleConfig>) => {
-    setDrawerConfig((c) => (c ? { ...c, ...patch } : c));
-  };
+  const updateConfig = (patch: Partial<RuleConfig>) => setDrawerConfig((c) => (c ? { ...c, ...patch } : c));
   const addGlob = (g: string) => {
     const trimmed = g.trim();
     if (!trimmed || !drawerConfig) return;
@@ -151,7 +150,6 @@ export default function RulesPage() {
     if (!drawerConfig) return;
     updateConfig({ globs: drawerConfig.globs.filter((x) => x !== g) });
   };
-
   const exampleCode = useMemo(() => {
     if (!drawerBody) return null;
     const m = drawerBody.match(/```[\w]*\n([\s\S]*?)\n```/);
@@ -160,225 +158,266 @@ export default function RulesPage() {
     return when ? when[1].trim().slice(0, 200) : null;
   }, [drawerBody]);
 
-  const cats = Array.from(new Set(RULE_SETS.map((s) => s.category))) as RuleSetCategory[];
+  // Toggle a single rule (from rule-pane toggle button)
+  const toggleRule = (ruleId: string, setId: string, on: boolean) => {
+    setConfigs((c) => {
+      const cur = c[ruleId] ?? { enabled: true, threshold: allRules.find((r) => r.id === ruleId)?.severity ?? 'warning', globs: [...DEFAULT_GLOBS] };
+      return { ...c, [ruleId]: { ...cur, enabled: on } };
+    });
+    setInstalledRules((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(ruleId); else next.delete(ruleId);
+      return next;
+    });
+    // Track which sets have at least one enabled rule, so "我的规则" stays in sync
+    setInstalledSets((prev) => {
+      const set = RULE_SETS.find((s) => s.id === setId);
+      if (!set) return prev;
+      const allRuleEnabled = set.ruleIds.every((id) => {
+        if (id === ruleId) return on;
+        const cfg = configs[id];
+        return cfg?.enabled !== false;
+      });
+      const next = new Set(prev);
+      if (allRuleEnabled) next.add(setId); else next.delete(setId);
+      return next;
+    });
+  };
+
+  // Toggle a whole set
+  const toggleSet = (set: RuleSet, on: boolean) => {
+    if (on) {
+      setInstalledSets((prev) => new Set([...prev, set.id]));
+      setInstalledRules((prev) => new Set([...prev, ...set.ruleIds]));
+      setConfigs((prev) => {
+        const next = { ...prev };
+        for (const id of set.ruleIds) {
+          const cur = next[id] ?? { enabled: true, threshold: allRules.find((r) => r.id === id)?.severity ?? 'warning', globs: [...DEFAULT_GLOBS] };
+          next[id] = { ...cur, enabled: true };
+        }
+        return next;
+      });
+    } else {
+      setInstalledSets((prev) => { const n = new Set(prev); n.delete(set.id); return n; });
+      setInstalledRules((prev) => {
+        const n = new Set(prev);
+        for (const id of set.ruleIds) n.delete(id);
+        return n;
+      });
+      setConfigs((prev) => {
+        const next = { ...prev };
+        for (const id of set.ruleIds) {
+          if (next[id]) next[id] = { ...next[id], enabled: false };
+        }
+        return next;
+      });
+    }
+  };
+
+  // Click scope tab: reset selection
+  const onScopeChange = (s: Scope) => {
+    setScope(s);
+    setActiveCat(null);
+    setSelectedSetId(null);
+  };
+  const onCatClick = (c: RuleSetCategory) => {
+    if (activeCat === c) {
+      setActiveCat(null);
+      setSelectedSetId(null);
+    } else {
+      setActiveCat(c);
+      setSelectedSetId(null);
+    }
+  };
+
+  // For rule-pane: resolve rule objects for selected set
+  const selectedSetRules = useMemo<RuleDoc[]>(() => {
+    if (!selectedSet) return [];
+    return selectedSet.ruleIds
+      .map((id) => allRules.find((r) => r.id === id))
+      .filter((r): r is RuleDoc => !!r);
+  }, [selectedSet, allRules]);
+
+  const installedCount = installedSets.size;
 
   return (
     <Shell repo="rules-market">
-      <div style={{ padding: '24px 32px', maxWidth: 1400 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 20, gap: 16, flexWrap: 'wrap' }}>
-          <div>
-            <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg-strong)', margin: 0 }}>规则市场</h1>
-            <p style={{ color: 'var(--muted)', margin: '4px 0 0', fontSize: 13 }}>
-              {error ? <span style={{ color: 'var(--danger)' }}>加载失败: {error}</span> : (
-                <>共 <strong style={{ color: 'var(--fg-strong)' }}>{RULE_SETS.length}</strong> 个 set / 涵盖 <strong style={{ color: 'var(--fg-strong)' }}>{new Set(RULE_SETS.flatMap((s) => s.ruleIds)).size}</strong> 条内置规则。每个 set 装一下就开启一组规则。</>
-              )}
-            </p>
-          </div>
-          <input
-            type="search"
-            placeholder="搜索 set / 描述…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            style={{
-              padding: '8px 12px',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--r)',
-              fontSize: 13,
-              minWidth: 240,
-              background: 'var(--surface)',
-              color: 'var(--fg)',
-            }}
-          />
-        </div>
-
-        {/* Tab: 我的规则 / 所有规则 */}
-        <div style={{ display: 'flex', gap: 0, marginBottom: 12, borderBottom: '1px solid var(--border)' }}>
-          <TabBtn label={`我的规则 (${installedCount})`} active={tab === 'mine'} onClick={() => setTab('mine')} />
-          <TabBtn label={`所有规则 (${RULE_SETS.length})`} active={tab === 'all'} onClick={() => setTab('all')} />
-        </div>
-
-        {/* Category sidebar as filters */}
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 20 }}>
-          <FilterBtn label={`全部分类 (${RULE_SETS.length})`} active={activeCat === 'all'} onClick={() => setActiveCat('all')} />
-          {cats.map((c) => {
-            const n = RULE_SETS.filter((s) => s.category === c).length;
-            return (
-              <FilterBtn
-                key={c}
-                label={`${CATEGORY_LABEL[c]} (${n})`}
-                active={activeCat === c}
-                onClick={() => setActiveCat(c)}
-              />
-            );
-          })}
-        </div>
-
-        {/* Installed strip — only when on "all" tab and user has any */}
-        {tab === 'all' && installedCount > 0 && (
-          <div style={{
-            display: 'flex',
-            gap: 8,
-            padding: '10px 12px',
-            marginBottom: 20,
-            background: 'var(--accent-soft)',
-            border: '1px solid var(--accent)',
-            borderRadius: 'var(--r)',
-            alignItems: 'center',
-            fontSize: 13,
-            color: 'var(--accent)',
-          }} data-testid="installed-strip">
-            <span style={{ fontWeight: 600 }}>已启用 {installedCount} 项</span>
-            <span style={{ color: 'var(--accent)', opacity: 0.7 }}>·</span>
-            <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {RULE_SETS.filter((s) => installedSets.has(s.id)).slice(0, 6).map((s) => (
-                <span key={s.id} style={{
-                  padding: '2px 8px',
-                  background: 'var(--surface)',
-                  borderRadius: 'var(--r-pill)',
-                  fontSize: 12,
-                  color: 'var(--fg)',
-                }}>{s.icon}</span>
-              ))}
-            </span>
+      <div className="rules-shell">
+        {/* ── Side rail (VSCode sidebar) ─────────────────────────── */}
+        <aside className="rules-side-rail" aria-label="规则分类导航">
+          <div className="rules-side-eyebrow">规则市场</div>
+          <div className="rules-side-tabs" role="tablist" aria-label="规则范围">
             <button
               type="button"
-              className="btn btn-ghost"
-              style={{ marginLeft: 'auto', color: 'var(--accent)' }}
-              onClick={() => setTab('mine')}
+              role="tab"
+              aria-selected={scope === 'mine'}
+              className={`rules-side-tab ${scope === 'mine' ? 'active' : ''}`}
+              onClick={() => onScopeChange('mine')}
+              data-testid="scope-mine"
             >
-              查看我的 →
+              我的规则
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={scope === 'all'}
+              className={`rules-side-tab ${scope === 'all' ? 'active' : ''}`}
+              onClick={() => onScopeChange('all')}
+              data-testid="scope-all"
+            >
+              所有规则
             </button>
           </div>
-        )}
 
-        {/* Set grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 12 }} data-testid="set-grid">
-          {visibleSets.map((s) => {
-            const installed = installedSets.has(s.id);
-            const enabledInConfig = s.ruleIds.filter((id) => configs[id]?.enabled !== false).length;
-            const allEnabled = enabledInConfig === s.ruleIds.length;
-            return (
-              <article
-                key={s.id}
-                data-set-card
-                data-set-id={s.id}
-                data-installed={installed ? 'true' : 'false'}
-                style={{
-                  padding: 16,
-                  background: 'var(--surface)',
-                  border: `1px solid ${installed ? 'var(--accent)' : 'var(--border)'}`,
-                  borderRadius: 'var(--r-lg)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 12,
-                  opacity: installed ? 1 : 0.85,
-                }}
+          <nav className="rules-cat-list" aria-label="规则分类">
+            {cats.map(([c, n]) => (
+              <button
+                key={c}
+                type="button"
+                className={`rules-cat-item ${activeCat === c ? 'active' : ''}`}
+                onClick={() => onCatClick(c)}
+                aria-current={activeCat === c ? 'page' : undefined}
+                data-testid={`cat-${c}`}
               >
-                <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                  <div
-                    aria-hidden
-                    style={{
-                      width: 40, height: 40,
-                      borderRadius: 'var(--r)',
-                      background: 'var(--accent-soft)',
-                      color: 'var(--accent)',
-                      display: 'grid', placeItems: 'center',
-                      fontWeight: 600, fontSize: 14,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {s.icon}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-                      <h2 style={{ fontSize: 15, fontWeight: 600, color: 'var(--fg-strong)', margin: 0 }}>{s.name}</h2>
-                      {s.featured && <span className="pill pill-accent" style={{ fontSize: 10 }}>精选</span>}
-                      <span className={SOURCE_PILL[s.source]} style={{ fontSize: 10 }}>{SOURCE_LABEL[s.source]}</span>
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--muted-2)', fontFamily: 'var(--font-mono)' }}>v{s.installs > 0 ? `0.${Math.max(1, Math.floor(s.installs / 1000))}` : '0'} · {freshnessLabel(s.updatedDays)}</div>
-                  </div>
-                </div>
+                <span className="rules-cat-icon" aria-hidden>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                    {ICONS[CATEGORY_ICON[c] ?? '整']}
+                  </svg>
+                </span>
+                <span className="rules-cat-name">{CATEGORY_LABEL[c]}</span>
+                <span className="rules-cat-count">{n}</span>
+              </button>
+            ))}
+          </nav>
+        </aside>
 
-                <p style={{ margin: 0, fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>{s.description}</p>
-
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center', fontSize: 11, color: 'var(--muted-2)' }}>
-                  <span>{s.ruleIds.length} 条规则</span>
-                  <span>·</span>
-                  <span>{CATEGORY_LABEL[s.category]}</span>
-                  {s.rating > 0 && (
-                    <>
-                      <span>·</span>
-                      <span>★ {s.rating.toFixed(1)}</span>
-                      <span>·</span>
-                      <span>{fmtInstalls(s.installs)} 装</span>
-                    </>
-                  )}
-                </div>
-
-                {/* Rule list inside set */}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '8px 0', borderTop: '1px solid var(--border)' }}>
-                  {s.ruleIds.map((rid) => {
-                    const r = allRules.find((x) => x.id === rid);
-                    if (!r) {
-                      return (
-                        <span key={rid} className="pill" style={{ fontFamily: 'var(--font-mono)', fontSize: 11, opacity: 0.5 }} title="rule 不存在">{rid}</span>
-                      );
-                    }
+        {/* ── Main 2-pane (set list + rule list) ───────────────────── */}
+        <main className="rules-market-main">
+          {!activeCat || setsInActiveCat.length === 0 ? (
+            <div className="rules-empty">
+              <div className="rules-empty-icon" aria-hidden>
+                <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+                </svg>
+              </div>
+              <h2 className="rules-empty-title">{activeCat ? `${CATEGORY_LABEL[activeCat]} 没有规则集` : '从左侧选一个分类'}</h2>
+              <p className="rules-empty-sub">
+                {activeCat
+                  ? (scope === 'mine' ? '切换到「所有规则」可以查看更多。' : '该分类暂时没有规则集。')
+                  : `${installedCount} 项已启用 · 共 ${RULE_SETS.length} 个 set 可选`}
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Set list (left) */}
+              <section className="rules-set-pane" data-testid="set-pane">
+                <header className="rules-pane-head">
+                  <div className="rules-pane-eyebrow">分类 · {CATEGORY_LABEL[activeCat]}</div>
+                  <h2 className="rules-pane-title">{CATEGORY_LABEL[activeCat]}</h2>
+                  <p className="rules-pane-sub">{setsInActiveCat.length} 个规则集</p>
+                </header>
+                <ul className="rules-set-list" role="list">
+                  {setsInActiveCat.map((s) => {
+                    const installed = installedSets.has(s.id);
+                    const selected = s.id === selectedSetId;
                     return (
-                      <button
-                        key={rid}
-                        type="button"
-                        onClick={() => openRule(r, s)}
-                        className={SEVERITY_PILL[r.severity]}
-                        style={{ fontFamily: 'var(--font-mono)', fontSize: 11, cursor: 'pointer', border: 'none' }}
-                        data-rule-pill
-                        data-rule-id={rid}
+                      <li
+                        key={s.id}
+                        className={`rules-set-item ${selected ? 'selected' : ''} ${installed ? 'installed' : ''}`}
+                        onClick={() => setSelectedSetId(selected ? null : s.id)}
+                        data-set-id={s.id}
+                        data-testid={`set-${s.id}`}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setSelectedSetId(selected ? null : s.id);
+                          }
+                        }}
                       >
-                        {r.id}
-                      </button>
+                        <div className="rules-set-icon" aria-hidden>
+                          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            {ICONS[s.icon] ?? ICONS['整']}
+                          </svg>
+                        </div>
+                        <div className="rules-set-body">
+                          <div className="rules-set-head">
+                            <span className="rules-set-name">{s.name}</span>
+                            <span className={`source-badge source-${s.source}`}>{SOURCE_LABEL[s.source]}</span>
+                          </div>
+                          <div className="rules-set-desc">{s.description}</div>
+                          <div className="rules-set-meta">
+                            <span>{s.ruleIds.length} 条规则</span>
+                            <span className="sep">·</span>
+                            <span>{fmtInstalls(s.installs)} 安装</span>
+                            {s.rating > 0 && (<><span className="sep">·</span><span>★ {s.rating.toFixed(1)}</span></>)}
+                          </div>
+                        </div>
+                      </li>
                     );
                   })}
-                </div>
+                </ul>
+              </section>
 
-                {/* Footer: install toggle */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, borderTop: '1px solid var(--border)' }}>
-                  <span style={{ fontSize: 11, color: 'var(--muted)' }}>
-                    {installed ? `已启用 (${enabledInConfig}/${s.ruleIds.length} 条规则激活)` : '未启用'}
-                  </span>
-                  {installed ? (
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      style={{ color: 'var(--danger)' }}
-                      onClick={() => toggleSet(s, false)}
-                      data-testid={`uninstall-${s.id}`}
-                    >
-                      停用
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      onClick={() => toggleSet(s, true)}
-                      data-testid={`install-${s.id}`}
-                    >
-                      + 安装
-                    </button>
-                  )}
-                </div>
-              </article>
-            );
-          })}
-        </div>
-
-        {visibleSets.length === 0 && (
-          <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }} data-testid="empty">
-            {tab === 'mine' ? '还没有装任何 set — 切到「所有规则」挑一个?' : '没有匹配的 set。'}
-          </div>
-        )}
+              {/* Rule list (right) — only when a set is selected */}
+              <section className={`rules-rule-pane ${selectedSet ? 'open' : ''}`} data-testid="rule-pane" aria-hidden={!selectedSet}>
+                {selectedSet && (
+                  <>
+                    <header className="rules-pane-head">
+                      <div className="rules-pane-eyebrow">规则集</div>
+                      <h2 className="rules-pane-title">{selectedSet.name}</h2>
+                      <p className="rules-pane-sub">
+                        {selectedSetRules.length} 条具体规则
+                        <button
+                          type="button"
+                          className="btn btn-ghost rules-set-toggle"
+                          onClick={() => toggleSet(selectedSet, !installedSets.has(selectedSet.id))}
+                          data-testid={`set-toggle-${selectedSet.id}`}
+                        >
+                          {installedSets.has(selectedSet.id) ? '停用全部' : '启用全部'}
+                        </button>
+                      </p>
+                    </header>
+                    <ul className="rules-rule-list" role="list">
+                      {selectedSetRules.map((r) => {
+                        const on = configs[r.id]?.enabled !== false;
+                        return (
+                          <li
+                            key={r.id}
+                            className="rules-rule-row"
+                            onClick={() => openRule(r, selectedSet)}
+                            data-rule-id={r.id}
+                            data-rule-row
+                          >
+                            <span className={`rules-rule-sev sev-${r.severity}`} title={SEVERITY_LABEL[r.severity]} />
+                            <div className="rules-rule-body">
+                              <div className="rules-rule-name">{r.title}</div>
+                              <div className="rules-rule-desc">{r.tldr}</div>
+                            </div>
+                            <button
+                              type="button"
+                              className={`rules-rule-toggle ${on ? 'on' : ''}`}
+                              aria-pressed={on}
+                              aria-label={`切换 ${r.title}`}
+                              onClick={(e) => { e.stopPropagation(); toggleRule(r.id, selectedSet.id, !on); }}
+                              data-testid={`rule-toggle-${r.id}`}
+                            >
+                              <span className="rules-rule-toggle-knob" />
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </>
+                )}
+              </section>
+            </>
+          )}
+        </main>
       </div>
 
-      {/* Drawer overlay + panel — same as before */}
+      {/* Drawer */}
       <div className={`drawer-overlay ${drawerRule ? 'open' : ''}`} onClick={closeDrawer} aria-hidden={!drawerRule} />
       <aside className={`drawer ${drawerRule ? 'open' : ''}`} role="dialog" aria-modal="true" aria-label="规则配置">
         {drawerRule && drawerConfig && (
@@ -386,9 +425,7 @@ export default function RulesPage() {
             <div className="drawer-head">
               <h3>
                 {drawerSet && (
-                  <span style={{ color: 'var(--muted)', fontFamily: 'var(--font-sans)', fontWeight: 500, marginRight: 6 }}>
-                    {drawerSet.name} /
-                  </span>
+                  <span style={{ color: 'var(--muted)', fontFamily: 'var(--font-sans)', fontWeight: 500, marginRight: 6 }}>{drawerSet.name} /</span>
                 )}
                 {drawerRule.id}
               </h3>
@@ -429,14 +466,7 @@ export default function RulesPage() {
                 <h4>严重等级阈值</h4>
                 <div className="drawer-segmented" role="tablist" aria-label="严重等级">
                   {(['error', 'warning', 'info'] as const).map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      role="tab"
-                      aria-selected={drawerConfig.threshold === s}
-                      className={drawerConfig.threshold === s ? 'active' : ''}
-                      onClick={() => updateConfig({ threshold: s })}
-                    >
+                    <button key={s} type="button" role="tab" aria-selected={drawerConfig.threshold === s} className={drawerConfig.threshold === s ? 'active' : ''} onClick={() => updateConfig({ threshold: s })}>
                       {SEVERITY_LABEL[s]}
                     </button>
                   ))}
@@ -448,21 +478,9 @@ export default function RulesPage() {
                 <h4>适用文件</h4>
                 <div className="drawer-globs">
                   {drawerConfig.globs.map((g) => (
-                    <span key={g} className="drawer-glob">
-                      {g}
-                      <button type="button" onClick={() => removeGlob(g)} aria-label={`移除 ${g}`}>×</button>
-                    </span>
+                    <span key={g} className="drawer-glob">{g}<button type="button" onClick={() => removeGlob(g)} aria-label={`移除 ${g}`}>×</button></span>
                   ))}
-                  <button
-                    type="button"
-                    className="drawer-add-glob"
-                    onClick={() => {
-                      const next = window.prompt('添加 glob 表达式:');
-                      if (next) addGlob(next);
-                    }}
-                  >
-                    + 添加
-                  </button>
+                  <button type="button" className="drawer-add-glob" onClick={() => { const next = window.prompt('添加 glob 表达式:'); if (next) addGlob(next); }}>+ 添加</button>
                 </div>
                 <p className="desc">默认覆盖 src 与 app 目录。</p>
               </div>
@@ -474,7 +492,6 @@ export default function RulesPage() {
                 </div>
               )}
             </div>
-
             <div className="drawer-foot">
               <button type="button" className="btn btn-ghost" onClick={resetConfig}>重置默认</button>
               <button type="button" className="btn btn-primary" onClick={saveConfig} data-testid="drawer-save">保存配置</button>
@@ -486,38 +503,13 @@ export default function RulesPage() {
   );
 }
 
-function TabBtn({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      type="button"
-      style={{
-        padding: '10px 16px',
-        background: 'none',
-        border: 'none',
-        borderBottom: active ? '2px solid var(--accent)' : '2px solid transparent',
-        color: active ? 'var(--accent)' : 'var(--muted)',
-        fontWeight: active ? 600 : 500,
-        fontSize: 13,
-        cursor: 'pointer',
-        marginBottom: -1,
-      }}
-      data-testid={`tab-${active ? 'active' : 'inactive'}`}
-    >
-      {label}
-    </button>
-  );
-}
-
-function FilterBtn({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className={active ? 'issue-tab active' : 'issue-tab'}
-      type="button"
-      style={active ? { background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--accent)' } : {}}
-    >
-      {label}
-    </button>
-  );
-}
+// Map set categories → icon name from ICONS map
+const CATEGORY_ICON: Record<RuleSetCategory, keyof typeof ICONS> = {
+  security: '盾',
+  quality: '整',
+  architecture: '模',
+  file: '文',
+  testing: '测',
+  config: '配',
+  documentation: '档',
+};
