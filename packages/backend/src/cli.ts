@@ -27,6 +27,8 @@ import type { RuleContext } from '@checkit/shared';
 
 import { loadFullConfig, type ResolvedRuleEntry } from './config';
 import { PRESET_COMMANDS, type PresetCommandName } from './preset';
+import { CONFIG_COMMANDS, type ConfigCommandName } from './config/commands';
+import { cmdChat } from './chat';
 
 export interface CLIOptions {
   cwd?: string;
@@ -202,27 +204,52 @@ export async function runCLI(options?: CLIOptions) {
   const cwd = options?.cwd ?? process.cwd();
   const args = options?.argv ?? process.argv.slice(2);
 
-  // ─── 0. preset subcommand dispatch ─────────────────────────────
-  // 第一 arg 如果是 preset 子命令(不与现有 flag 冲突),转交 preset 模块。
-  // 例:`checkit preset list` / `lintany preset new my-preset --rules no-any-rule`
+  // ─── 0. subcommand dispatch ─────────────────────────────────
+  // 第一 arg 如果是 preset / config / chat / doctor namespace,
+  // 转交对应模块。任何其它第一 arg(包括 cwd 路径)走老 scan 路径。
+  // 例:`lintany preset list` / `lintany config set theme dark` /
+  //    `lintany chat "TS strict"` / `lintany doctor`
   const firstNonFlag = args.find((a) => !a.startsWith('--'));
-  const knownPresetSubcmds: PresetCommandName[] = ['list', 'new', 'show', 'apply', 'delete', 'export', 'import'];
-  if (firstNonFlag === 'preset') {
-    const sub = args[args.indexOf('preset') + 1];
-    if (sub && (knownPresetSubcmds as string[]).includes(sub)) {
-      const rest = args.slice(args.indexOf(sub) + 1);
-      const fn = PRESET_COMMANDS[sub as PresetCommandName];
+  const KNOWN_NAMESPACES: Record<string, Record<string, (args: string[], cwd: string) => void | Promise<void>> | null> = {
+    preset: PRESET_COMMANDS as unknown as Record<string, (args: string[], cwd: string) => void | Promise<void>>,
+    config: CONFIG_COMMANDS as unknown as Record<string, (args: string[], cwd: string) => void | Promise<void>>,
+    chat: null, // async, special-cased below
+  };
+
+  if (firstNonFlag && Object.prototype.hasOwnProperty.call(KNOWN_NAMESPACES, firstNonFlag)) {
+    const ns = firstNonFlag as 'preset' | 'config' | 'chat';
+
+    if (ns === 'chat') {
+      // chat 是 async,且接受 positional message(无 sub)
       try {
-        const result = fn(rest, cwd);
-        if (result instanceof Promise) await result;
+        await cmdChat(args.slice(args.indexOf('chat') + 1), cwd);
         return;
       } catch (e) {
         console.error(`error: ${(e as Error).message}`);
         process.exit(1);
       }
-    } else {
-      console.error(`error: unknown preset subcommand "${sub ?? ''}".`);
-      console.error(`       known: ${knownPresetSubcmds.join(', ')}`);
+    }
+
+    const registry = KNOWN_NAMESPACES[ns]!;
+    const sub = args[args.indexOf(ns) + 1];
+    if (!sub) {
+      console.error(`error: '${ns}' requires a subcommand.`);
+      console.error(`       known: ${Object.keys(registry).join(', ')}`);
+      process.exit(1);
+    }
+    const fn = registry[sub];
+    if (!fn) {
+      console.error(`error: unknown ${ns} subcommand "${sub}".`);
+      console.error(`       known: ${Object.keys(registry).join(', ')}`);
+      process.exit(1);
+    }
+    const rest = args.slice(args.indexOf(sub) + 1);
+    try {
+      const result = fn(rest, cwd);
+      if (result instanceof Promise) await result;
+      return;
+    } catch (e) {
+      console.error(`error: ${(e as Error).message}`);
       process.exit(1);
     }
   }
