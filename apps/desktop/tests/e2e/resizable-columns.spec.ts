@@ -1,5 +1,6 @@
 // tests/e2e/resizable-columns.spec.ts — column resize + persistence.
 import { test, expect } from '@playwright/test';
+import { gotoView } from './helpers';
 
 async function dragResizer(
   page: import('@playwright/test').Page,
@@ -28,9 +29,10 @@ async function dragResizer(
 
 test.describe('Column resizers', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/rules');
+    await gotoView(page, 'rules');
     await page.evaluate(() => localStorage.removeItem('checkit:layout'));
     await page.reload();
+    await page.waitForSelector('.rules-side-eyebrow', { timeout: 10_000 });
   });
 
   test('side-rail resizer exists and is 8px wide (hit area) + absolute positioned', async ({ page }) => {
@@ -123,7 +125,7 @@ test.describe('Column resizers', () => {
     await dragResizer(page, 'side-rail', 50);
     const widthBefore = await page.evaluate(() => document.querySelector('.rules-side-rail')!.getBoundingClientRect().width);
     await page.reload();
-    await page.waitForSelector('[data-resizer-for="side-rail"]');
+    await page.waitForSelector('[data-resizer-for="side-rail"]', { timeout: 10_000 });
     const widthAfter = await page.evaluate(() => document.querySelector('.rules-side-rail')!.getBoundingClientRect().width);
     expect(Math.abs(widthBefore - widthAfter)).toBeLessThan(2);
   });
@@ -153,6 +155,7 @@ test.describe('Column resizers', () => {
 
     // Reload — both persist independently
     await page.reload();
+    await page.waitForSelector('.rules-side-eyebrow', { timeout: 10_000 });
     const sideRail = await page.evaluate(() => document.querySelector('.rules-side-rail')!.getBoundingClientRect().width);
     await page.getByTestId('cat-security').click();
     await page.getByTestId('set-security-baseline').click();

@@ -1,6 +1,7 @@
-// tests/e2e/routes.spec.ts — verify all 4 routes load and the nav works.
+// tests/e2e/routes.spec.ts — verify all views render and the rail works.
 
 import { test, expect, type Page } from '@playwright/test';
+import { gotoView, gotoDirectView } from './helpers';
 
 const SAMPLE = {
   issues: [
@@ -9,63 +10,64 @@ const SAMPLE = {
   source: 'demo.json',
 };
 
-async function seed(page: Page) {
-  await page.addInitScript((r) => {
-    localStorage.setItem('checkit:last-report', JSON.stringify(r));
-  }, SAMPLE);
+async function seed(page: Page, extra: Record<string, unknown> = {}) {
+  await page.addInitScript((data) => {
+    for (const [k, v] of Object.entries(data)) {
+      localStorage.setItem(k, JSON.stringify(v));
+    }
+  }, { 'checkit:last-report': SAMPLE, ...extra });
 }
 
 test.describe('Navigation', () => {
-  test('topbar brand link returns to /', async ({ page }) => {
-    await page.goto('/rules');
+  test('brand button returns to dashboard', async ({ page }) => {
+    await gotoView(page, 'rules');
     await page.locator('.rail-brand').click();
-    await page.waitForURL(/\/$/);
+    await page.waitForSelector('[data-view="dashboard"]', { timeout: 5_000 });
   });
 
-  test('rules tab navigates to /rules', async ({ page }) => {
-    await page.goto('/');
-    await page.getByRole('link', { name: '规则市场' }).first().click();
-    await page.waitForURL(/\/rules/);
-    // /rules now uses a VSCode-style side rail; the visible "规则市场"
-    // label lives in the side rail eyebrow (.rules-side-eyebrow), not a heading.
+  test('rules rail tab opens rules view', async ({ page }) => {
+    await gotoView(page, 'dashboard');
+    await page.getByTestId('rail-tab-rules').click();
+    await page.waitForSelector('[data-view="rules"]', { timeout: 5_000 });
+    // /rules uses a VSCode-style side rail; the visible "规则市场" label
+    // lives in the side rail eyebrow, not a heading.
     await expect(page.locator('.rules-side-eyebrow')).toContainText('规则市场');
   });
 
-  test('chat tab navigates to /chat', async ({ page }) => {
-    await page.goto('/');
-    await page.getByRole('link', { name: 'Chat' }).first().click();
-    await page.waitForURL(/\/chat/);
+  test('chat rail tab opens chat view', async ({ page }) => {
+    await gotoView(page, 'dashboard');
+    await page.getByTestId('rail-tab-chat').click();
+    await page.waitForSelector('[data-view="chat"]', { timeout: 5_000 });
     await expect(page.getByRole('heading', { name: 'AI 规则助手' })).toBeVisible();
   });
 
-  test('active tab is highlighted correctly', async ({ page }) => {
-    await page.goto('/rules');
-    await expect(page.locator('.rail-tab.active')).toHaveAttribute('aria-label', '规则市场');
+  test('active rail tab is highlighted correctly', async ({ page }) => {
+    await gotoView(page, 'rules');
+    await expect(page.getByTestId('rail-tab-rules')).toHaveClass(/active/);
 
-    await page.goto('/chat');
-    await expect(page.locator('.rail-tab.active')).toHaveAttribute('aria-label', 'Chat');
+    await page.getByTestId('rail-tab-chat').click();
+    await page.waitForSelector('[data-view="chat"]');
+    await expect(page.getByTestId('rail-tab-chat')).toHaveClass(/active/);
 
-    await page.goto('/');
-    await expect(page.locator('.rail-tab.active')).toHaveAttribute('aria-label', '主控台');
+    await page.locator('.rail-brand').click();
+    await page.waitForSelector('[data-view="dashboard"]');
+    await expect(page.getByTestId('rail-tab-dashboard')).toHaveClass(/active/);
   });
 });
 
-test.describe('Rules marketplace — placeholder', () => {
-  test('rules marketplace renders VSCode-style marketplace with side rail + set pane', async ({ page }) => {
-    await page.goto('/rules');
-    // "规则市场" lives in the side rail eyebrow, not a heading.
+test.describe('Rules marketplace', () => {
+  test('renders VSCode-style marketplace with side rail + set pane', async ({ page }) => {
+    await gotoView(page, 'rules');
     await expect(page.locator('.rules-side-eyebrow')).toContainText('规则市场', { timeout: 10_000 });
-    // Side rail should show scope tabs + category nav
     await expect(page.getByRole('tab', { name: '我的规则' })).toBeVisible();
     await expect(page.getByRole('tab', { name: '所有规则' })).toBeVisible();
-    // Wait for the side rail to finish populating categories after the initial render
     await expect(page.getByTestId('cat-security')).toBeVisible({ timeout: 10_000 });
   });
 });
 
-test.describe('Chat page (replaces placeholder)', () => {
+test.describe('Chat view', () => {
   test('shows real chat UI with suggestions and quick keywords', async ({ page }) => {
-    await page.goto('/chat');
+    await gotoView(page, 'chat');
     await expect(page.getByRole('heading', { name: 'AI 规则助手' })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByPlaceholder('输入消息')).toBeVisible();
     await expect(page.getByRole('button', { name: /我想加强 SQL 注入检查/ })).toBeVisible();
@@ -73,21 +75,26 @@ test.describe('Chat page (replaces placeholder)', () => {
 });
 
 test.describe('AI-fix navigation', () => {
-  test('clicking AI fix CTA from dashboard opens /ai-fix with right query', async ({ page }) => {
+  test('clicking AI fix CTA from dashboard opens ai-fix view with right state', async ({ page }) => {
     await seed(page);
     await page.goto('/');
+    await page.waitForSelector('.issue-row', { timeout: 10_000 });
     await page.locator('.issue-row').first().click();
-    const link = page.getByRole('link', { name: /一键 AI 修复/ });
-    await link.click();
-    await page.waitForURL(/\/ai-fix/);
-    const url = new URL(page.url());
-    expect(url.searchParams.get('idx')).toBe('0');
-    expect(url.searchParams.get('file')).toBe('demo.json');
+    await page.getByRole('button', { name: /一键 AI 修复/ }).click();
+    await page.waitForSelector('[data-view="ai-fix"]', { timeout: 5_000 });
+    const stored = await page.evaluate(() => localStorage.getItem('checkit:view'));
+    expect(stored).toBeTruthy();
+    const view = JSON.parse(stored!);
+    expect(view.id).toBe('ai-fix');
+    expect(view.idx).toBe(0);
+    expect(view.file).toBe('demo.json');
   });
 
-  test('AI fix page is reachable directly via URL', async ({ page }) => {
-    await seed(page);
-    await page.goto('/ai-fix?idx=0&file=demo.json');
+  test('AI fix view is reachable directly via stored view state', async ({ page }) => {
+    await gotoDirectView(page, 'ai-fix', {
+      'checkit:last-report': SAMPLE,
+      'checkit:view': { id: 'ai-fix', idx: 0, file: 'demo.json' },
+    });
     await expect(page.locator('.ai-fix-page')).toBeVisible();
   });
 });
@@ -97,18 +104,19 @@ test.describe('Responsive', () => {
     await seed(page);
     await page.setViewportSize({ width: 800, height: 600 });
     await page.goto('/');
-    // At <1024px, .dash is single column
+    await page.waitForSelector('.dash', { timeout: 10_000 });
     const gridColumns = await page.locator('.dash').evaluate((el) => getComputedStyle(el).gridTemplateColumns);
-    // Single column = only one width value, not three
     expect(gridColumns.split(' ').length).toBeLessThanOrEqual(1);
-    // Side rail hidden
     await expect(page.locator('.side-rail')).toBeHidden();
   });
 
   test('mobile viewport collapses ai-fix to single column', async ({ page }) => {
     await seed(page);
     await page.setViewportSize({ width: 800, height: 600 });
-    await page.goto('/ai-fix?idx=0&file=demo.json');
+    await gotoDirectView(page, 'ai-fix', {
+      'checkit:last-report': SAMPLE,
+      'checkit:view': { id: 'ai-fix', idx: 0, file: 'demo.json' },
+    });
     const gridColumns = await page.locator('.ai-fix-page').evaluate((el) => getComputedStyle(el).gridTemplateColumns);
     expect(gridColumns.split(' ').length).toBeLessThanOrEqual(1);
   });
@@ -117,6 +125,7 @@ test.describe('Responsive', () => {
     await seed(page);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/');
+    await page.waitForSelector('.dash', { timeout: 10_000 });
     await expect(page.locator('.side-rail')).toBeVisible();
     await expect(page.locator('.dash-main')).toBeVisible();
     await expect(page.locator('.dash-right')).toBeVisible();

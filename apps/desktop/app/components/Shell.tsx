@@ -1,9 +1,7 @@
 'use client';
 import React from 'react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { type ViewId, type ViewState, RAIL_TABS } from '../views/registry';
 
-// Inline SVG icons (no deps). Same family as the prototype.
 const Icon = ({ children, size = 18 }: { children: React.ReactNode; size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">{children}</svg>
 );
@@ -15,19 +13,33 @@ const ICON_CHAT      = <Icon><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 
 const ICON_SETTINGS  = <Icon><path d="M4 6h16M4 12h16M4 18h10"/></Icon>;
 const ICON_SUN       = <Icon><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></Icon>;
 
-const TABS = [
-  { id: 'dashboard',    href: '/',            label: '主控台', icon: ICON_DASHBOARD },
-  { id: 'rules-market', href: '/rules',       label: '规则市场', icon: ICON_GRID },
-  { id: 'chat',         href: '/chat',        label: 'Chat',     icon: ICON_CHAT },
-];
+const ICON_BY_TAB: Record<string, React.ReactNode> = {
+  dashboard: ICON_DASHBOARD,
+  rules: ICON_GRID,
+  chat: ICON_CHAT,
+};
 
-export function Shell({ repo, children }: { repo?: string; children: React.ReactNode }) {
-  const pathname = usePathname() ?? '/';
-  const activeTab =
-    pathname.startsWith('/rules')   ? 'rules-market' :
-    pathname.startsWith('/chat')    ? 'chat' :
-    pathname.startsWith('/ai-fix')  ? 'dashboard' :
-    'dashboard';
+// Maps a view id to which rail tab should be highlighted.
+// `rule-detail` and `ai-fix` are sub-views of their parent tab.
+function parentTabId(id: ViewId): 'dashboard' | 'rules' | 'chat' {
+  if (id === 'rules' || id === 'rule-detail') return 'rules';
+  if (id === 'chat') return 'chat';
+  return 'dashboard';
+}
+
+export function Shell({
+  repo,
+  view,
+  onNavigate,
+  children,
+}: {
+  repo?: string;
+  view: ViewId | ViewState;
+  onNavigate: (next: ViewState) => void;
+  children: React.ReactNode;
+}) {
+  const viewId: ViewId = typeof view === 'string' ? view : view.id;
+  const activeTab = parentTabId(viewId);
 
   return (
     <>
@@ -48,19 +60,33 @@ export function Shell({ repo, children }: { repo?: string; children: React.React
         </div>
       </header>
       <aside className="rail" aria-label="主导航">
-        <Link href="/" className="rail-brand" aria-label="Checkit Codebase Doctor">{ICON_SHIELD}</Link>
+        <button
+          type="button"
+          className="rail-brand"
+          aria-label="Checkit Codebase Doctor"
+          onClick={() => onNavigate({ id: 'dashboard' })}
+        >{ICON_SHIELD}</button>
         <nav className="rail-tabs" aria-label="主标签">
-          {TABS.map((t) => (
-            <Link key={t.id} href={t.href} className={`rail-tab ${activeTab === t.id ? 'active' : ''}`} title={t.label} aria-label={t.label}>
-              {t.icon}
-            </Link>
+          {RAIL_TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className={`rail-tab ${activeTab === t.id ? 'active' : ''}`}
+              title={t.label}
+              aria-label={t.label}
+              aria-current={activeTab === t.id ? 'page' : undefined}
+              onClick={() => onNavigate(t.view)}
+              data-testid={`rail-tab-${t.id}`}
+            >
+              {ICON_BY_TAB[t.id]}
+            </button>
           ))}
         </nav>
         <div className="rail-actions">
           <button className="rail-icon" type="button" aria-label="设置" title="设置">{ICON_SETTINGS}</button>
         </div>
       </aside>
-      <main>{children}</main>
+      <main data-view={viewId} data-testid={`view-${viewId}`}>{children}</main>
     </>
   );
 }

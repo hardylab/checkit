@@ -1,25 +1,12 @@
 'use client';
-import React, { Suspense, useState, useMemo } from 'react';
-import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import React, { useState, useMemo } from 'react';
 import { Shell } from '../components/Shell';
 import type { Issue } from '../lib/report';
+import type { NavigateFn } from './registry';
 
 const STORAGE_KEY = 'checkit:last-report';
 
-export default function AiFixPage() {
-  return (
-    <Suspense fallback={<Shell><div className="placeholder"><div className="placeholder-card">Loading…</div></div></Shell>}>
-      <AiFixInner />
-    </Suspense>
-  );
-}
-
-function AiFixInner() {
-  const search = useSearchParams();
-  const idx = parseInt(search.get('idx') ?? '-1', 10);
-  const file = search.get('file') ?? '';
-
+export function AiFixView({ idx, file, navigate }: { idx: number; file: string; navigate: NavigateFn }) {
   const [report] = useState<{ issues: Issue[]; source: string } | null>(() => {
     try {
       const s = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
@@ -36,12 +23,12 @@ function AiFixInner() {
 
   if (!issue || !diff) {
     return (
-      <Shell repo={report?.source ?? file}>
+      <Shell repo={report?.source ?? file} view="dashboard" onNavigate={navigate}>
         <div className="placeholder">
           <div className="placeholder-card">
             <h2>找不到这个问题</h2>
             <p>报告已经更新或 idx 失效。<br />回到主控台重新选择一条 issue。</p>
-            <Link className="btn btn-primary" href="/">回到主控台</Link>
+            <button type="button" className="btn btn-primary" onClick={() => navigate({ id: 'dashboard' })}>回到主控台</button>
           </div>
         </div>
       </Shell>
@@ -52,7 +39,6 @@ function AiFixInner() {
     if (typeof window === 'undefined' || !window.checkit) return;
     setApplying(true);
     try {
-      // V2: re-run --ai-fix scoped to this issue. For now: full project AI-fix.
       const result = await window.checkit.scan({ cwd: report?.source, aiFix: true });
       if (result.ok) alert('AI-Fix 已执行。重新扫描查看效果。');
       else alert(`AI-Fix 失败: ${result.stderr ?? result.parseError ?? `exit ${result.exitCode}`}`);
@@ -64,11 +50,15 @@ function AiFixInner() {
   };
 
   return (
-    <Shell repo={report?.source ?? file}>
+    <Shell repo={report?.source ?? file} view="dashboard" onNavigate={navigate}>
       <div className="ai-fix-page">
         <aside className="ai-fix-aside">
           <div style={{ marginBottom: 16 }}>
-            <Link href="/" style={{ fontSize: 12, color: 'var(--muted)' }}>← 返回主控台</Link>
+            <button
+              type="button"
+              onClick={() => navigate({ id: 'dashboard' })}
+              style={{ background: 'transparent', border: 'none', padding: 0, font: 'inherit', color: 'var(--muted)', fontSize: 12, cursor: 'pointer' }}
+            >← 返回主控台</button>
           </div>
           <div className="detail-section" style={{ marginBottom: 16 }}>
             <h4>问题诊断</h4>
@@ -126,7 +116,7 @@ function AiFixInner() {
             <button className="btn" type="button" onClick={() => { navigator.clipboard.writeText(diff.raw).catch(() => {}); }}>
               复制 Patch
             </button>
-            <Link href="/" className="btn btn-ghost" style={{ textAlign: 'center' }}>拒绝</Link>
+            <button type="button" className="btn btn-ghost" onClick={() => navigate({ id: 'dashboard' })}>拒绝</button>
             <button className="btn btn-primary" type="button" onClick={onAccept} disabled={applying}>
               {applying ? '执行中…' : '应用补丁'}
             </button>

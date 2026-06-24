@@ -1,8 +1,8 @@
 'use client';
 import React, { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { Shell } from '../../components/Shell';
-import { fetchRuleBody, type RuleDoc } from '../../lib/api';
+import { Shell } from '../components/Shell';
+import { fetchRuleBody, type RuleDoc } from '../lib/api';
+import type { NavigateFn } from './registry';
 
 const SEVERITY_PILL: Record<RuleDoc['severity'], string> = {
   error: 'pill pill-error',
@@ -15,29 +15,35 @@ const SEVERITY_LABEL: Record<RuleDoc['severity'], string> = {
   info: '提示',
 };
 
-export default function RuleDetailPage({ params }: { params: { id: string } }) {
+export function RuleDetailView({ ruleId, navigate }: { ruleId: string; navigate: NavigateFn }) {
   const [body, setBody] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchRuleBody(params.id).then(setBody).catch((e) => setError(e.message));
-  }, [params.id]);
+    setBody(null);
+    setError(null);
+    fetchRuleBody(ruleId).then(setBody).catch((e) => setError(e.message));
+  }, [ruleId]);
 
-  // Crude markdown → HTML for the rendered body. Skip code fences for now
-  // (we just dump text); the structured MD file is the source of truth.
   const html = body ? renderMd(body) : '';
 
   return (
-    <Shell repo={`rules · ${params.id}`}>
+    <Shell repo={`rules · ${ruleId}`} view="rules" onNavigate={navigate}>
       <div style={{ padding: '24px 32px', maxWidth: 880 }}>
         <div style={{ marginBottom: 16 }}>
-          <Link href="/rules" style={{ fontSize: 12, color: 'var(--muted)' }}>← 回到规则市场</Link>
+          <button
+            type="button"
+            onClick={() => navigate({ id: 'rules' })}
+            style={{ background: 'transparent', border: 'none', padding: 0, font: 'inherit', color: 'var(--muted)', fontSize: 12, cursor: 'pointer' }}
+          >
+            ← 回到规则市场
+          </button>
         </div>
 
         <header style={{ marginBottom: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
             <code style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 600, color: 'var(--fg-strong)' }}>
-              {params.id}
+              {ruleId}
             </code>
             {body && <span className={SEVERITY_PILL[extractSeverity(body)]}>{SEVERITY_LABEL[extractSeverity(body)]}</span>}
           </div>
@@ -78,7 +84,6 @@ function extractTitle(md: string): string {
 }
 
 function renderMd(md: string): string {
-  // Strip frontmatter, then render headings + paragraphs + code + lists.
   const body = md.replace(/^---[\s\S]*?---\n/, '');
   const lines = body.split('\n');
   const out: string[] = [];

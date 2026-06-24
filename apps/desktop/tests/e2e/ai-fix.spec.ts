@@ -1,6 +1,7 @@
-// tests/e2e/ai-fix.spec.ts — /ai-fix page rendering + interactions.
+// tests/e2e/ai-fix.spec.ts — ai-fix view rendering + interactions.
 
 import { test, expect, type Page } from '@playwright/test';
+import { gotoDirectView } from './helpers';
 
 const SAMPLE = {
   issues: [
@@ -23,27 +24,24 @@ const SAMPLE = {
 };
 
 async function seedAndGotoAiFix(page: Page, idx = 0) {
-  await page.addInitScript((report) => {
-    localStorage.setItem('checkit:last-report', JSON.stringify(report));
-  }, SAMPLE);
-  await page.goto(`/ai-fix?idx=${idx}&file=demo-report.json`);
+  await gotoDirectView(page, 'ai-fix', {
+    'checkit:last-report': SAMPLE,
+    'checkit:view': { id: 'ai-fix', idx, file: 'demo-report.json' },
+  });
 }
 
-test.describe('AI-fix page', () => {
+test.describe('AI-fix view', () => {
   test('renders the selected issue + plan + impact estimate', async ({ page }) => {
     await seedAndGotoAiFix(page, 0);
     await expect(page.locator('.ai-fix-page')).toBeVisible();
 
-    // Sidebar
     await expect(page.locator('h4', { hasText: '问题诊断' })).toBeVisible();
     await expect(page.getByText('AWS Access Key hardcoded')).toBeVisible();
     await expect(page.locator('.pill-warn, .pill-error').first()).toBeVisible();
 
-    // Plan section
     await expect(page.locator('h4', { hasText: 'AI 计划' })).toBeVisible();
     await expect(page.locator('ol li').first()).toBeVisible();
 
-    // Impact grid
     await expect(page.locator('h4', { hasText: '影响估算' })).toBeVisible();
   });
 
@@ -58,7 +56,6 @@ test.describe('AI-fix page', () => {
     await seedAndGotoAiFix(page, 0);
     await expect(page.locator('.diff-table')).toBeVisible();
     await expect(page.locator('.patch-toggle button.active')).toHaveText('Unified');
-    // Has at least one add or del row
     const rows = page.locator('.diff-table tr');
     expect(await rows.count()).toBeGreaterThan(0);
   });
@@ -76,48 +73,42 @@ test.describe('AI-fix page', () => {
     await expect(page.locator('.patch-toggle button.active')).toHaveText('Unified');
   });
 
-  test('back link returns to dashboard with report loaded', async ({ page }) => {
+  test('back button returns to dashboard with report loaded', async ({ page }) => {
     await seedAndGotoAiFix(page, 0);
-    await page.getByRole('link', { name: '← 返回主控台' }).click();
-    await page.waitForURL(/\/$/);
-    // Returns to dashboard view (not dropzone), since localStorage still
-    // holds the report. This is correct UX — user goes back to see context.
+    await page.getByRole('button', { name: '← 返回主控台' }).click();
+    await page.waitForSelector('[data-view="dashboard"]', { timeout: 5_000 });
     await expect(page.locator('.dash')).toBeVisible();
     await expect(page.locator('.issue-row')).toHaveCount(2);
   });
 
-  test('reject link returns to dashboard with report loaded', async ({ page }) => {
+  test('reject button returns to dashboard with report loaded', async ({ page }) => {
     await seedAndGotoAiFix(page, 0);
-    await page.getByRole('link', { name: '拒绝' }).click();
-    await page.waitForURL(/\/$/);
+    await page.getByRole('button', { name: '拒绝' }).click();
+    await page.waitForSelector('[data-view="dashboard"]', { timeout: 5_000 });
     await expect(page.locator('.dash')).toBeVisible();
   });
 
   test('missing idx shows placeholder + back CTA', async ({ page }) => {
     await page.addInitScript((report) => {
       localStorage.setItem('checkit:last-report', JSON.stringify(report));
+      localStorage.setItem('checkit:view', JSON.stringify({ id: 'ai-fix', idx: 99, file: 'foo.json' }));
     }, SAMPLE);
-    await page.goto('/ai-fix?idx=99&file=foo.json');
+    await page.goto('/');
+    await page.waitForSelector('[data-view="ai-fix"]', { timeout: 10_000 });
     await expect(page.getByRole('heading', { name: '找不到这个问题' })).toBeVisible();
-    await expect(page.getByRole('link', { name: '回到主控台' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '回到主控台' })).toBeVisible();
   });
 
   test('copy patch button clicks without error', async ({ page }) => {
     await seedAndGotoAiFix(page, 0);
     const copyBtn = page.getByRole('button', { name: /复制 Patch/ });
-    // Granting clipboard permission doesn't help in headless chrome
-    // because navigator.clipboard.writeText requires a secure context
-    // and a user gesture. Just verify the click doesn't throw and that
-    // a `.catch` noop keeps the page stable.
     await expect(copyBtn).toBeVisible();
     await copyBtn.click();
-    // Page still rendered (no exception broke React)
     await expect(page.locator('.ai-fix-page')).toBeVisible();
   });
 
   test('apply patch button triggers Electron IPC (or alert in dev)', async ({ page }) => {
     await seedAndGotoAiFix(page, 0);
-    // Outside Electron, the handler just shows an alert
     page.once('dialog', (d) => {
       expect(d.message()).toContain('AI agent');
       d.dismiss();

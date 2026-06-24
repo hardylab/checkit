@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Shell } from '../components/Shell';
 import type { RuleSet } from '../lib/rule-sets';
+import type { NavigateFn } from './registry';
 
 type Message = {
   id: string;
@@ -13,7 +14,7 @@ type Message = {
 
 type Conversation = {
   id: string;
-  title: string;          // 显示在侧边栏,默认取首条用户消息前 24 字
+  title: string;
   createdAt: number;
   updatedAt: number;
   messages: Message[];
@@ -21,7 +22,6 @@ type Conversation = {
 
 const CONVOS_KEY = 'checkit:chat-conversations';
 const ACTIVE_KEY = 'checkit:chat-active';
-// 旧版单数组 key,首次加载时迁移
 const LEGACY_KEY = 'checkit:chat-history';
 
 const INSTALLED_KEY = 'checkit:installed-rules';
@@ -36,8 +36,8 @@ const SUGGESTIONS = [
 
 const QUICK_KEYS = ['SQL', '密钥', 'TypeScript', '依赖', '测试', '文件', '架构', 'console.log'];
 
-const MAX_CONVOS = 50;          // 最多保留多少条会话
-const MAX_MESSAGES_PER = 200;   // 单会话消息上限
+const MAX_CONVOS = 50;
+const MAX_MESSAGES_PER = 200;
 
 const newId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -60,7 +60,7 @@ const fmtRelative = (ts: number): string => {
   return new Date(ts).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
 };
 
-export default function ChatPage() {
+export function ChatView({ navigate }: { navigate: NavigateFn }) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [input, setInput] = useState('');
@@ -70,7 +70,6 @@ export default function ChatPage() {
   const [hydrated, setHydrated] = useState(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
 
-  // ── Hydrate ─────────────────────────────────────────────
   useEffect(() => {
     try {
       const raw = localStorage.getItem(CONVOS_KEY);
@@ -78,7 +77,6 @@ export default function ChatPage() {
         const arr = JSON.parse(raw);
         if (Array.isArray(arr)) setConversations(arr);
       } else {
-        // 一次性迁移:旧 messages 数组 → 一个会话
         const legacy = localStorage.getItem(LEGACY_KEY);
         if (legacy) {
           const msgs = JSON.parse(legacy);
@@ -109,7 +107,6 @@ export default function ChatPage() {
     setHydrated(true);
   }, []);
 
-  // ── Persist ─────────────────────────────────────────────
   useEffect(() => {
     if (!hydrated) return;
     try {
@@ -128,25 +125,21 @@ export default function ChatPage() {
     } catch {}
   }, [activeId, hydrated]);
 
-  // 清理旧 key(迁移成功后)
   useEffect(() => {
     if (!hydrated) return;
     try { localStorage.removeItem(LEGACY_KEY); } catch {}
   }, [hydrated]);
 
-  // ── Derived ─────────────────────────────────────────────
   const active = useMemo(
     () => conversations.find((c) => c.id === activeId) ?? null,
     [conversations, activeId]
   );
   const activeMessages = active?.messages ?? [];
 
-  // 切换会话时滚到底
   useEffect(() => {
     if (scrollerRef.current) scrollerRef.current.scrollTop = scrollerRef.current.scrollHeight;
   }, [activeId, activeMessages.length]);
 
-  // ── Actions ─────────────────────────────────────────────
   const newConversation = (): string => {
     const conv: Conversation = {
       id: newId(),
@@ -170,7 +163,6 @@ export default function ChatPage() {
     if (!confirm('删除这个对话?')) return;
     setConversations((cs) => cs.filter((c) => c.id !== id));
     if (activeId === id) {
-      // 切到列表里第一个,没有就建新的
       setConversations((cs) => {
         if (cs.length === 0) {
           const conv: Conversation = {
@@ -194,7 +186,6 @@ export default function ChatPage() {
     if (!trimmed || sending) return;
     setInput('');
 
-    // 没有活动会话就先建一个
     let targetId = activeId;
     if (!targetId) targetId = newConversation();
 
@@ -286,11 +277,9 @@ export default function ChatPage() {
     try { localStorage.setItem(INSTALLED_KEY, JSON.stringify([...nextRules])); } catch {}
   };
 
-  // ── Render ─────────────────────────────────────────────
   return (
-    <Shell repo="chat">
+    <Shell repo="chat" view="chat" onNavigate={navigate}>
       <div className="chat-page">
-        {/* ── Side rail ─────────────────────────── */}
         <aside className="chat-side-rail" aria-label="对话历史">
           <div className="chat-side-eyebrow">对话</div>
           <div className="chat-side-new">
@@ -356,7 +345,6 @@ export default function ChatPage() {
           </nav>
         </aside>
 
-        {/* ── Conversation pane ───────────────────── */}
         <main className="chat-conversation">
           {!active ? (
             <div className="chat-empty">

@@ -7,6 +7,7 @@ import {
   RULE_SETS, CATEGORY_LABEL, isSetInstalled, fmtInstalls, freshnessLabel,
   type RuleSet, type RuleSetCategory,
 } from '../lib/rule-sets';
+import type { NavigateFn } from './registry';
 
 type Scope = 'mine' | 'all';
 
@@ -27,7 +28,6 @@ const INSTALLED_SETS_KEY = 'checkit:installed-sets';
 const DEFAULT_GLOBS = ['src/**/*.{ts,tsx}', 'app/**'];
 
 // Inline SVG icons matching the prototype's set icon family.
-// Use createElement instead of JSX so a single key can hold multiple <path>/<rect> elements.
 const e = React.createElement;
 const ICONS: Record<string, React.ReactNode> = {
   盾: e('path', { d: 'M12 2.5 4.5 5.5v6c0 5 3.2 9.4 7.5 10.5 4.3-1.1 7.5-5.5 7.5-10.5v-6L12 2.5Z' }),
@@ -44,7 +44,7 @@ const ICONS: Record<string, React.ReactNode> = {
 
 type RuleConfig = { enabled: boolean; threshold: RuleDoc['severity']; globs: string[] };
 
-export default function RulesPage() {
+export function RulesView({ navigate }: { navigate: NavigateFn }) {
   const [scope, setScope] = useState<Scope>('all');
   const [activeCat, setActiveCat] = useState<RuleSetCategory | null>(null);
   const [selectedSetId, setSelectedSetId] = useState<string | null>(null);
@@ -54,7 +54,6 @@ export default function RulesPage() {
   const [allRules, setAllRules] = useState<RuleDoc[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // Drawer
   const [drawerRule, setDrawerRule] = useState<RuleDoc | null>(null);
   const [drawerSet, setDrawerSet] = useState<RuleSet | null>(null);
   const [drawerBody, setDrawerBody] = useState<string | null>(null);
@@ -62,12 +61,9 @@ export default function RulesPage() {
 
   const [hydrated, setHydrated] = useState(false);
 
-  // Refs to the columns we resize (so the hook reads width directly
-  // from the DOM rather than guessing sibling positions).
   const sideRailRef = useRef<HTMLElement>(null);
   const rulePaneRef = useRef<HTMLElement>(null);
 
-  // Resizable columns with localStorage persistence.
   const sideRail = useColumnLayout({
     columnRef: sideRailRef,
     columnKey: 'side-rail',
@@ -91,18 +87,13 @@ export default function RulesPage() {
       const is = localStorage.getItem(INSTALLED_SETS_KEY);
       if (is) { const a = JSON.parse(is); if (Array.isArray(a)) setInstalledSets(new Set(a)); }
     } catch {}
-    // Mark hydrated AFTER the initial localStorage read so the persist
-    // effects below don't immediately overwrite stored data with the
-    // default empty state.
     setHydrated(true);
   }, []);
 
-  // Persist — only AFTER hydration so we don't clobber stored state.
   useEffect(() => { if (hydrated) try { localStorage.setItem(RULE_CONFIG_KEY, JSON.stringify(configs)); } catch {} }, [configs, hydrated]);
   useEffect(() => { if (hydrated) try { localStorage.setItem(INSTALLED_RULES_KEY, JSON.stringify([...installedRules])); } catch {} }, [installedRules, hydrated]);
   useEffect(() => { if (hydrated) try { localStorage.setItem(INSTALLED_SETS_KEY, JSON.stringify([...installedSets])); } catch {} }, [installedSets, hydrated]);
 
-  // Side-rail categories: built from RULE_SETS, with per-category counts in current scope
   const cats = useMemo(() => {
     const map = new Map<RuleSetCategory, number>();
     for (const s of RULE_SETS) {
@@ -112,7 +103,6 @@ export default function RulesPage() {
     return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
   }, [scope, installedSets]);
 
-  // When the active category disappears (e.g. switch to mine and no installed sets in that cat), reset selection
   useEffect(() => {
     if (activeCat && !cats.find(([c]) => c === activeCat)) {
       setActiveCat(null);
@@ -130,7 +120,6 @@ export default function RulesPage() {
     [setsInActiveCat, selectedSetId]
   );
 
-  // Drawer helpers
   const openRule = (rule: RuleDoc, parent: RuleSet) => {
     setDrawerRule(rule);
     setDrawerSet(parent);
@@ -178,7 +167,6 @@ export default function RulesPage() {
     return when ? when[1].trim().slice(0, 200) : null;
   }, [drawerBody]);
 
-  // Toggle a single rule (from rule-pane toggle button)
   const toggleRule = (ruleId: string, setId: string, on: boolean) => {
     setConfigs((c) => {
       const cur = c[ruleId] ?? { enabled: true, threshold: allRules.find((r) => r.id === ruleId)?.severity ?? 'warning', globs: [...DEFAULT_GLOBS] };
@@ -189,7 +177,6 @@ export default function RulesPage() {
       if (on) next.add(ruleId); else next.delete(ruleId);
       return next;
     });
-    // Track which sets have at least one enabled rule, so "我的规则" stays in sync
     setInstalledSets((prev) => {
       const set = RULE_SETS.find((s) => s.id === setId);
       if (!set) return prev;
@@ -204,7 +191,6 @@ export default function RulesPage() {
     });
   };
 
-  // Toggle a whole set
   const toggleSet = (set: RuleSet, on: boolean) => {
     if (on) {
       setInstalledSets((prev) => new Set([...prev, set.id]));
@@ -234,7 +220,6 @@ export default function RulesPage() {
     }
   };
 
-  // Click scope tab: reset selection
   const onScopeChange = (s: Scope) => {
     setScope(s);
     setActiveCat(null);
@@ -250,7 +235,6 @@ export default function RulesPage() {
     }
   };
 
-  // For rule-pane: resolve rule objects for selected set
   const selectedSetRules = useMemo<RuleDoc[]>(() => {
     if (!selectedSet) return [];
     return selectedSet.ruleIds
@@ -261,9 +245,8 @@ export default function RulesPage() {
   const installedCount = installedSets.size;
 
   return (
-    <Shell repo="rules-market">
+    <Shell repo="rules-market" view="rules" onNavigate={navigate}>
       <div className="rules-shell">
-        {/* ── Side rail (VSCode sidebar) ─────────────────────────── */}
         <aside
           ref={sideRailRef}
           className="rules-side-rail"
@@ -306,7 +289,7 @@ export default function RulesPage() {
               >
                 <span className="rules-cat-icon" aria-hidden>
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                    {ICONS[CATEGORY_ICON[c] ?? '整']}
+                    {ICONS['整']}
                   </svg>
                 </span>
                 <span className="rules-cat-name">{CATEGORY_LABEL[c]}</span>
@@ -315,8 +298,6 @@ export default function RulesPage() {
             ))}
           </nav>
 
-          {/* Resizer on the right edge of the side rail.
-              Positioned absolutely so it doesn't consume flex space. */}
           <div
             className="rules-resizer rules-resizer-v"
             style={{ right: 0 }}
@@ -325,7 +306,6 @@ export default function RulesPage() {
           />
         </aside>
 
-        {/* ── Main 2-pane (set list + rule list) ───────────────────── */}
         <main className="rules-market-main">
           {!activeCat || setsInActiveCat.length === 0 ? (
             <div className="rules-empty">
@@ -343,7 +323,6 @@ export default function RulesPage() {
             </div>
           ) : (
             <>
-              {/* Set list (left) */}
               <section className="rules-set-pane" data-testid="set-pane">
                 <header className="rules-pane-head">
                   <div className="rules-pane-eyebrow">分类 · {CATEGORY_LABEL[activeCat]}</div>
@@ -394,7 +373,6 @@ export default function RulesPage() {
                 </ul>
               </section>
 
-              {/* Rule list (right) — only when a set is selected */}
               <section
                 ref={rulePaneRef}
                 className={`rules-rule-pane ${selectedSet ? 'open' : ''}`}
@@ -402,8 +380,6 @@ export default function RulesPage() {
                 aria-hidden={!selectedSet}
                 style={{ width: rulePane.width }}
               >
-                {/* Resizer on the left edge of the rule pane.
-                    Positioned absolutely so it doesn't consume flex space. */}
                 <div
                   className="rules-resizer rules-resizer-v"
                   style={{ left: 0 }}
@@ -435,7 +411,7 @@ export default function RulesPage() {
                           <li
                             key={r.id}
                             className="rules-rule-row"
-                            onClick={() => openRule(r, selectedSet)}
+                            onClick={() => navigate({ id: 'rule-detail', ruleId: r.id })}
                             data-rule-id={r.id}
                             data-rule-row
                           >
@@ -466,7 +442,6 @@ export default function RulesPage() {
         </main>
       </div>
 
-      {/* Drawer */}
       <div className={`drawer-overlay ${drawerRule ? 'open' : ''}`} onClick={closeDrawer} aria-hidden={!drawerRule} />
       <aside className={`drawer ${drawerRule ? 'open' : ''}`} role="dialog" aria-modal="true" aria-label="规则配置">
         {drawerRule && drawerConfig && (
@@ -496,53 +471,54 @@ export default function RulesPage() {
                   <div className="drawer-hero-desc">{drawerRule.tldr}</div>
                 </div>
               </div>
-
               <div className="drawer-section">
-                <div className="drawer-toggle-row">
-                  <span className="label">启用此规则</span>
+                <label className="drawer-toggle">
                   <input
                     type="checkbox"
+                    data-testid="drawer-enabled"
                     checked={drawerConfig.enabled}
                     onChange={(e) => updateConfig({ enabled: e.target.checked })}
-                    style={{ width: 32, height: 18 }}
-                    data-testid="drawer-enabled"
                   />
-                </div>
-                <p className="desc">关闭后该规则不会出现在扫描结果中。</p>
+                  <span>启用此规则</span>
+                </label>
               </div>
-
               <div className="drawer-section">
                 <h4>严重等级阈值</h4>
-                <div className="drawer-segmented" role="tablist" aria-label="严重等级">
-                  {(['error', 'warning', 'info'] as const).map((s) => (
-                    <button key={s} type="button" role="tab" aria-selected={drawerConfig.threshold === s} className={drawerConfig.threshold === s ? 'active' : ''} onClick={() => updateConfig({ threshold: s })}>
-                      {SEVERITY_LABEL[s]}
+                <div className="drawer-sev-row">
+                  {(['error', 'warning', 'info'] as const).map((lv) => (
+                    <button
+                      key={lv}
+                      type="button"
+                      className={`drawer-sev-pill ${drawerConfig.threshold === lv ? 'active' : ''}`}
+                      onClick={() => updateConfig({ threshold: lv })}
+                      data-testid={`threshold-${lv}`}
+                    >
+                      {SEVERITY_LABEL[lv]}
                     </button>
                   ))}
                 </div>
-                <p className="desc">低于此等级的问题将不计入扫描统计。</p>
               </div>
-
               <div className="drawer-section">
-                <h4>适用文件</h4>
-                <div className="drawer-globs">
+                <h4>应用范围</h4>
+                <ul className="drawer-glob-list">
                   {drawerConfig.globs.map((g) => (
-                    <span key={g} className="drawer-glob">{g}<button type="button" onClick={() => removeGlob(g)} aria-label={`移除 ${g}`}>×</button></span>
+                    <li key={g}>
+                      <code>{g}</code>
+                      <button type="button" onClick={() => removeGlob(g)} aria-label={`删除 ${g}`}>×</button>
+                    </li>
                   ))}
-                  <button type="button" className="drawer-add-glob" onClick={() => { const next = window.prompt('添加 glob 表达式:'); if (next) addGlob(next); }}>+ 添加</button>
-                </div>
-                <p className="desc">默认覆盖 src 与 app 目录。</p>
+                </ul>
+                <AddGlob onAdd={addGlob} />
               </div>
-
               {exampleCode && (
                 <div className="drawer-section">
-                  <h4>触发示例</h4>
-                  <pre className="drawer-code-block">{exampleCode}</pre>
+                  <h4>示例 / 触发条件</h4>
+                  <pre className="drawer-code"><code>{exampleCode}</code></pre>
                 </div>
               )}
             </div>
             <div className="drawer-foot">
-              <button type="button" className="btn btn-ghost" onClick={resetConfig}>重置默认</button>
+              <button type="button" className="btn btn-ghost" onClick={resetConfig}>恢复默认</button>
               <button type="button" className="btn btn-primary" onClick={saveConfig} data-testid="drawer-save">保存配置</button>
             </div>
           </>
@@ -552,13 +528,20 @@ export default function RulesPage() {
   );
 }
 
-// Map set categories → icon name from ICONS map
-const CATEGORY_ICON: Record<RuleSetCategory, keyof typeof ICONS> = {
-  security: '盾',
-  quality: '整',
-  architecture: '模',
-  file: '文',
-  testing: '测',
-  config: '配',
-  documentation: '档',
-};
+function AddGlob({ onAdd }: { onAdd: (g: string) => void }) {
+  const [v, setV] = useState('');
+  return (
+    <form
+      onSubmit={(e) => { e.preventDefault(); onAdd(v); setV(''); }}
+      style={{ display: 'flex', gap: 6, marginTop: 8 }}
+    >
+      <input
+        value={v}
+        onChange={(e) => setV(e.target.value)}
+        placeholder="src/**"
+        style={{ flex: 1, padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', fontSize: 12, fontFamily: 'var(--font-mono)', background: 'var(--surface)', color: 'var(--fg)' }}
+      />
+      <button type="submit" className="btn btn-ghost">+</button>
+    </form>
+  );
+}
