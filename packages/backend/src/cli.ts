@@ -26,6 +26,7 @@ import { glob } from 'glob';
 import type { RuleContext } from '@checkit/shared';
 
 import { loadFullConfig, type ResolvedRuleEntry } from './config';
+import { PRESET_COMMANDS, type PresetCommandName } from './preset';
 
 export interface CLIOptions {
   cwd?: string;
@@ -200,6 +201,31 @@ function parseArgs(args: string[]): {
 export async function runCLI(options?: CLIOptions) {
   const cwd = options?.cwd ?? process.cwd();
   const args = options?.argv ?? process.argv.slice(2);
+
+  // ─── 0. preset subcommand dispatch ─────────────────────────────
+  // 第一 arg 如果是 preset 子命令(不与现有 flag 冲突),转交 preset 模块。
+  // 例:`checkit preset list` / `lintany preset new my-preset --rules no-any-rule`
+  const firstNonFlag = args.find((a) => !a.startsWith('--'));
+  const knownPresetSubcmds: PresetCommandName[] = ['list', 'new', 'show', 'apply', 'delete', 'export', 'import'];
+  if (firstNonFlag === 'preset') {
+    const sub = args[args.indexOf('preset') + 1];
+    if (sub && (knownPresetSubcmds as string[]).includes(sub)) {
+      const rest = args.slice(args.indexOf(sub) + 1);
+      const fn = PRESET_COMMANDS[sub as PresetCommandName];
+      try {
+        const result = fn(rest, cwd);
+        if (result instanceof Promise) await result;
+        return;
+      } catch (e) {
+        console.error(`error: ${(e as Error).message}`);
+        process.exit(1);
+      }
+    } else {
+      console.error(`error: unknown preset subcommand "${sub ?? ''}".`);
+      console.error(`       known: ${knownPresetSubcmds.join(', ')}`);
+      process.exit(1);
+    }
+  }
 
   // 1. parseArgs —— always parse argv, even when options is passed.
   //    The previous guard `if (options?.argv || ...)` accidentally skipped

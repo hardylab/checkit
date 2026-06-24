@@ -15,8 +15,10 @@
     "./package.json": "./package.json"
   },
   "bin": {
+    "lintany": "./dist/cli.cjs",
     "checkit": "./dist/cli.cjs"
   },
+  "description": "Lint Anything Against Best Practices. LintAny finds issues across your project and lets you save rule bundles (presets) you can reuse across projects.",
   "files": [
     "dist",
     "README.md"
