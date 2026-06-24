@@ -30,7 +30,7 @@ const DEFAULT_GLOBS = ['src/**/*.{ts,tsx}', 'app/**'];
 // Inline SVG icons matching the prototype's set icon family.
 const e = React.createElement;
 const ICONS: Record<string, React.ReactNode> = {
-  盾: e('path', { d: 'M12 2.5 4.5 5.5v6c0 5 3.2 9.4 7.5 10.5 4.3-1.1 7.5-5.5 7.5-10.5v-6L12 2.5Z' }),
+  盾: e('path', { d: 'm9 12 2 2 4-4' }),
   TS: e('path', { d: 'M3 4h18v3h-7v13h-4V7H3V4Z' }),
   模: e(React.Fragment, null, e('rect', { x: '3', y: '3', width: '7', height: '7', rx: '1' }), e('rect', { x: '14', y: '3', width: '7', height: '7', rx: '1' }), e('rect', { x: '3', y: '14', width: '7', height: '7', rx: '1' }), e('rect', { x: '14', y: '14', width: '7', height: '7', rx: '1' })),
   文: e(React.Fragment, null, e('path', { d: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' }), e('path', { d: 'M14 2v6h6' }), e('path', { d: 'M8 13h8M8 17h6' })),
@@ -411,7 +411,7 @@ export function RulesView({ navigate }: { navigate: NavigateFn }) {
                           <li
                             key={r.id}
                             className="rules-rule-row"
-                            onClick={() => navigate({ id: 'rule-detail', ruleId: r.id })}
+                            onClick={() => openRule(r, selectedSet)}
                             data-rule-id={r.id}
                             data-rule-row
                           >

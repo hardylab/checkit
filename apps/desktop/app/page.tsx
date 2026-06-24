@@ -1,37 +1,9 @@
-'use client';
-// Single SPA entry. All "routes" are in-memory view states — no URL changes.
-import React, { useState, useEffect } from 'react';
-import { renderView, type ViewState } from './views/registry';
+// Server component wrapper. The actual SPA shell lives in SpApp (client).
+// Server wrapper exists so Next renders a stable HTML tree on first paint
+// (and so the root page is never treated as "not found" — an empty Client
+// Component tree at the root triggers Next's 404 fallback).
+import { SpApp } from './SpApp';
 
-const VIEW_KEY = 'checkit:view';
-
-export default function App() {
-  const [view, setView] = useState<ViewState>({ id: 'dashboard' });
-  const [hydrated, setHydrated] = useState(false);
-
-  // Restore last view on mount
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(VIEW_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed.id === 'string') setView(parsed);
-      }
-    } catch {}
-    setHydrated(true);
-  }, []);
-
-  // Persist
-  useEffect(() => {
-    if (!hydrated) return;
-    try { localStorage.setItem(VIEW_KEY, JSON.stringify(view)); } catch {}
-  }, [view, hydrated]);
-
-  // Don't render until we've tried to restore — avoids a flash of dashboard
-  // when the user was last on chat. The flash is brief but visible.
-  if (!hydrated) {
-    return <main style={{ visibility: 'hidden' }} />;
-  }
-
-  return <>{renderView(view, setView)}</>;
+export default function Page() {
+  return <SpApp />;
 }

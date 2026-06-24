@@ -43,7 +43,7 @@ export async function POST(req: Request) {
 
   const bin = cliBinary();
 
-  return new Promise((resolve) => {
+  return new Promise<Response>((resolve) => {
     const child = spawn(process.execPath, [bin, ...args], {
       cwd,
       env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },

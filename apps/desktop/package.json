@@ -21,11 +21,12 @@
     "@checkit/cli": "workspace:*"
   },
   "devDependencies": {
-    "next": "^14.2.5",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "@playwright/test": "1.49.1",
+    "concurrently": "^8.2.2",
     "electron": "^30.0.0",
     "electron-builder": "^24.13.3",
-    "concurrently": "^8.2.2"
+    "next": "^14.2.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   }
 }

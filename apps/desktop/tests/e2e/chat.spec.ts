@@ -15,7 +15,9 @@ test.describe('Chat view', () => {
     await expect(page.getByRole('button', { name: /我们团队没有 ESLint/ })).toBeVisible();
 
     for (const k of ['SQL', '密钥', 'TypeScript', '依赖', '测试', '文件', '架构', 'console.log']) {
-      await expect(page.getByRole('button', { name: new RegExp(`^${k}$`) })).toBeVisible();
+      const btn = page.getByRole('button', { name: new RegExp(`^${k}$`) });
+      await btn.scrollIntoViewIfNeeded();
+      await expect(btn).toBeVisible();
     }
   });
 

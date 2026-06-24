@@ -19,28 +19,23 @@ export async function gotoView(
   view: ViewId,
   opts: { seed?: Record<string, unknown>; viaTab?: boolean } = {}
 ) {
-  // 1. Reset view state + any seed data
-  await page.addInitScript(({ seed }) => {
-    localStorage.removeItem('checkit:view');
+  // Seed the target view directly into localStorage (so it survives reloads).
+  // NOTE: addInitScript re-runs on EVERY navigation including `page.reload()`,
+  // so we must NOT clear keys here — that would wipe the view state the app
+  // just persisted. Just overwrite with what we want.
+  await page.addInitScript(({ view, seed }) => {
+    localStorage.setItem('checkit:view', JSON.stringify({ id: view }));
     if (seed) {
       for (const [k, v] of Object.entries(seed)) {
         localStorage.setItem(k, JSON.stringify(v));
       }
     }
-  }, { seed: opts.seed });
+  }, { view, seed: opts.seed });
 
-  // 2. First load — let the app hydrate with our seed
+  // First load — SpApp hydrates from localStorage and renders the target view
   await page.goto('/');
 
-  // 3. Wait for the shell to mount
-  await page.waitForSelector('[data-testid="rail-tab-dashboard"]', { timeout: 10_000 });
-
-  // 4. Click the right rail tab (or trust localStorage seed for default dashboard)
-  if (view !== 'dashboard' || opts.viaTab) {
-    await page.getByTestId(`rail-tab-${view}`).click();
-  }
-
-  // 5. Wait for the view container to render
+  // Wait for the view container to render (hydrated)
   await page.waitForSelector(`[data-view="${view}"]`, { timeout: 10_000 });
 }
 

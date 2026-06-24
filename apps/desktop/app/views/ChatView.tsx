@@ -136,6 +136,21 @@ export function ChatView({ navigate }: { navigate: NavigateFn }) {
   );
   const activeMessages = active?.messages ?? [];
 
+  // If we landed on chat with no active conversation, create one so the
+  // composer is reachable and the empty thread shows the in-conversation
+  // empty state (rather than the pre-conversation one).
+  useEffect(() => {
+    if (!hydrated) return;
+    if (conversations.length === 0) {
+      newConversation();
+    } else if (!active) {
+      // Conversations exist but none is active — pick the most recent.
+      const latest = [...conversations].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+      if (latest) setActiveId(latest.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated]);
+
   useEffect(() => {
     if (scrollerRef.current) scrollerRef.current.scrollTop = scrollerRef.current.scrollHeight;
   }, [activeId, activeMessages.length]);
@@ -346,6 +361,7 @@ export function ChatView({ navigate }: { navigate: NavigateFn }) {
         </aside>
 
         <main className="chat-conversation">
+          <h1 className="chat-page-title">AI 规则助手</h1>
           {!active ? (
             <div className="chat-empty">
               <div className="chat-empty-icon">

@@ -49,7 +49,7 @@ export default defineConfig({
   webServer: {
     command: 'pnpm dev:next',
     url: BASE_URL,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: true,  // reuse any :3000 server (prod or dev) — saves dev-mode compile wait
     timeout: 60_000,
     stdout: 'pipe',
     stderr: 'pipe',
