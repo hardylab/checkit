@@ -189,13 +189,6 @@ export default function ChatPage() {
     }
   };
 
-  const updateActive = (mutator: (c: Conversation) => Conversation) => {
-    if (!activeId) return;
-    setConversations((cs) =>
-      cs.map((c) => (c.id === activeId ? mutator(c) : c))
-    );
-  };
-
   const send = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || sending) return;
@@ -391,27 +384,6 @@ export default function ChatPage() {
             </div>
           ) : (
             <>
-              <header className="chat-conv-head">
-                <div className="chat-conv-head-text">
-                  <div className="chat-conv-head-title">{active.title || '新对话'}</div>
-                  <div className="chat-conv-head-sub">
-                    {active.messages.length} 条消息 · {fmtRelative(active.updatedAt)}
-                  </div>
-                </div>
-                {active.messages.length > 0 && (
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    onClick={() => {
-                      if (!confirm('清空当前对话的消息?')) return;
-                      updateActive((c) => ({ ...c, messages: [], updatedAt: Date.now(), title: '新对话' }));
-                    }}
-                  >
-                    清空消息
-                  </button>
-                )}
-              </header>
-
               <div className="chat-thread" ref={scrollerRef} data-testid="chat-thread">
                 {active.messages.length === 0 ? (
                   <div className="chat-conv-empty">
