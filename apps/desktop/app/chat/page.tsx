@@ -303,7 +303,7 @@ export default function ChatPage() {
           <div className="chat-side-new">
             <button
               type="button"
-              className="btn btn-primary chat-side-new-btn"
+              className="chat-side-new-btn"
               onClick={newConversation}
               data-testid="chat-new"
             >

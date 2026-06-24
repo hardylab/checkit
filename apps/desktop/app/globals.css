@@ -277,9 +277,17 @@ main { grid-column: 2; grid-row: 2; overflow-y: auto; min-width: 0; }
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 34px;
+  height: 32px;
   font-size: 13px;
   font-weight: 500;
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--border);
+}
+.chat-side-new-btn:hover {
+  background: var(--surface-2);
+  border-color: var(--muted-2);
+  color: var(--fg-strong);
 }
 .chat-side-list {
   flex: 1;
@@ -358,9 +366,14 @@ main { grid-column: 2; grid-row: 2; overflow-y: auto; min-width: 0; }
   min-width: 0;
   display: grid;
   grid-template-rows: auto 1fr auto;
-  background: var(--surface);
+  background: var(--bg);
   min-height: 0;
   overflow: hidden;
+  justify-items: center;
+}
+.chat-conversation > * {
+  width: 100%;
+  max-width: 1000px;
 }
 .chat-conv-head {
   display: flex;
