@@ -19,6 +19,7 @@ const PROVIDER_PRESETS: Record<string, { defaultBaseUrl: string; defaultModel: s
   claude:         { defaultBaseUrl: 'https://api.anthropic.com', defaultModel: 'claude-sonnet-4-5' },
   minimax:        { defaultBaseUrl: 'https://api.minimaxi.com/v1', defaultModel: 'MiniMax-M3' },
   ollama:         { defaultBaseUrl: 'http://localhost:11434/v1', defaultModel: 'llama3' },
+  custom:         { defaultBaseUrl: '', defaultModel: '' },
 };
 
 const PROVIDER_OPTIONS = [
@@ -27,6 +28,7 @@ const PROVIDER_OPTIONS = [
   { id: 'claude',         label: 'Anthropic Claude' },
   { id: 'minimax',        label: 'MiniMax' },
   { id: 'ollama',         label: 'Ollama (local)' },
+  { id: 'custom',         label: '自定义 (Custom) — 自己填供应商名字' },
 ];
 
 const CloseIcon = () => (
@@ -57,6 +59,7 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
 
   // Form state
   const [provider, setProvider] = useState<string>('local-keyword');
+  const [customProviderName, setCustomProviderName] = useState<string>('');
   const [model, setModel] = useState<string>('');
   const [baseUrl, setBaseUrl] = useState<string>('');
   const [apiKey, setApiKey] = useState<string>('');
@@ -82,6 +85,13 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
         setModel(cfg['ai.model'] || preset?.defaultModel || '');
         setBaseUrl(cfg['ai.base_url'] || preset?.defaultBaseUrl || '');
         setApiKey(cfg['ai.api_key'] || '');
+        // The "custom provider name" is just the adapter itself for the
+        // custom adapter; the user can edit it inline.
+        if (adapter === 'custom') {
+          setCustomProviderName(cfg['ai.adapter'] || '');
+        } else {
+          setCustomProviderName('');
+        }
       })
       .catch((e) => setError(e.message || 'failed to load config'))
       .finally(() => setLoading(false));
@@ -107,8 +117,16 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
       // Compare against what we'd reset to (provider default) to detect
       // "user cleared this back to default" → unset.
       const preset = PROVIDER_PRESETS[provider];
+      const isCustom = provider === 'custom';
 
-      writes.push({ key: 'ai.adapter', value: provider });
+      // Determine the actual adapter value to write. For "custom" the
+      // user types the provider name; we use that as both the adapter id
+      // and the human-readable label.
+      const adapterValue = isCustom
+        ? (customProviderName.trim() || 'custom')
+        : provider;
+
+      writes.push({ key: 'ai.adapter', value: adapterValue });
 
       // Model: if user provided custom, set; if matches preset default, leave as-is.
       if (model) writes.push({ key: 'ai.model', value: model });
@@ -169,6 +187,7 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       setProvider('local-keyword');
+      setCustomProviderName('');
       setModel('');
       setBaseUrl('');
       setApiKey('');
@@ -183,6 +202,7 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
   if (!open) return null;
 
   const presetForProvider = PROVIDER_PRESETS[provider];
+  const isCustom = provider === 'custom';
 
   return (
     <div className="settings-overlay" role="dialog" aria-modal="true" aria-label="LintAny 系统设置" onClick={onClose}>
@@ -217,6 +237,25 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
               </select>
             </label>
 
+            {isCustom && (
+              <label className="settings-field">
+                <span className="settings-label">供应商名称 (自己起名)</span>
+                <input
+                  className="settings-input"
+                  type="text"
+                  value={customProviderName}
+                  onChange={(e) => setCustomProviderName(e.target.value)}
+                  placeholder="例如: doubao / moonshot / deepseek / qwen / zhipu / mycompany-llm"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <span className="settings-hint">
+                  这个名字会作为 adapter id 写入 config (例:<code>ai.adapter = doubao</code>)。
+                  选用 OpenAI-compatible 接口的供应商直接用 <code>https://&lt;host&gt;/v1</code> 风格的 Base URL 即可。
+                </span>
+              </label>
+            )}
+
             <label className="settings-field">
               <span className="settings-label">
                 Model
@@ -229,7 +268,7 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
                 type="text"
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
-                placeholder={presetForProvider?.defaultModel || 'gpt-4o-mini / claude-sonnet-4-5 / MiniMax-M3'}
+                placeholder={presetForProvider?.defaultModel || 'gpt-4o-mini / claude-sonnet-4-5 / MiniMax-M3 / 自定义模型名'}
               />
             </label>
 
@@ -284,7 +323,7 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
 
             {provider === 'local-keyword' && (
               <p className="settings-info">
-                Local keyword 模式不需要 API key —— 关键词命中返回 rule/preset 推荐。要真 LLM 回复请选 OpenAI / Claude / MiniMax 之一。
+                Local keyword 模式不需要 API key —— 关键词命中返回 rule/preset 推荐。要真 LLM 回复请选 OpenAI / Claude / MiniMax / 自定义 之一。
               </p>
             )}
 
