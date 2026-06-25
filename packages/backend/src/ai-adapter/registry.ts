@@ -83,7 +83,18 @@ export function getAdapter(id: string, cfg: AdapterConfig = {}): AiAdapter {
   }
 }
 
-/** Resolve the effective adapter id (from --adapter flag, config, or default). */
+/** Resolve the effective adapter id.
+ *
+ * Resolution order (first hit wins):
+ *   1. --adapter flag (explicit)
+ *   2. ai.adapter in ~/.checkit/config.json
+ *   3. MINIMAX_API_KEY or OPENAI_API_KEY env → default to "minimax" (or "openai" if user prefers)
+ *   4. "local-keyword" (offline fallback)
+ *
+ * This way `lintany chat "..."` Just Works™ for users who have a MiniMax
+ * or OpenAI key in their environment, while offline users still get
+ * useful keyword-based suggestions.
+ */
 export function resolveAdapterId(flagValue: string | undefined): string {
   if (flagValue) return flagValue;
   try {
@@ -92,5 +103,10 @@ export function resolveAdapterId(flagValue: string | undefined): string {
   } catch {
     /* ignore */
   }
+  // Env-var auto-promotion: if a cloud key is present, use it. Prefer
+  // MiniMax since it's our default provider.
+  if (process.env.MINIMAX_API_KEY) return 'minimax';
+  if (process.env.OPENAI_API_KEY) return 'openai';
+  if (process.env.ANTHROPIC_API_KEY) return 'claude';
   return 'local-keyword';
 }

@@ -1,19 +1,21 @@
 // packages/backend/src/ai-adapter/parse-reply.test.ts
 //
 // parseReply 是 internal — 通过 mock fetch 间接测试(OpenAI/Claude adapter)。
+// resolveAdapterId 也直接测(env var auto-promotion)。
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
-// We need to import AFTER setting up fetch mock.
 let parseReplyFromOpenai: typeof import('./openai.js')['makeOpenAIAdapter'];
 let parseReplyFromClaude: typeof import('./claude.js')['makeClaudeAdapter'];
+let resolveAdapterId: typeof import('./registry.js')['resolveAdapterId'];
 
 beforeEach(async () => {
-  // dynamic import so we can swap fetch first
   const mod = await import('./openai.js');
   parseReplyFromOpenai = mod.makeOpenAIAdapter;
   const mod2 = await import('./claude.js');
   parseReplyFromClaude = mod2.makeClaudeAdapter;
+  const mod3 = await import('./registry.js');
+  resolveAdapterId = mod3.resolveAdapterId;
 });
 
 describe('OpenAI adapter — error paths', () => {
@@ -35,17 +37,15 @@ describe('OpenAI adapter — error paths', () => {
 
 describe('OpenAI adapter — parseReply (via fetch mock)', () => {
   let origFetch: typeof globalThis.fetch;
-  beforeEach(() => {
-    origFetch = globalThis.fetch;
-  });
+  beforeEach(() => { origFetch = globalThis.fetch; });
   afterEach(() => {
     globalThis.fetch = origFetch;
     delete process.env.OPENAI_API_KEY;
   });
 
   it('parses a clean JSON response', async () => {
-    process.env.OPENAI_API_KEY = 'sk-test';
-    globalThis.fetch = (async (_url: string | URL | Request, _init?: RequestInit) => {
+    process.env.OPENAI_API_KEY = 'sk-test-key';
+    globalThis.fetch = (async (_url, _init) => {
       return new Response(JSON.stringify({
         choices: [{ message: { content: JSON.stringify({
           reply: 'Use TS strict.',
@@ -63,7 +63,7 @@ describe('OpenAI adapter — parseReply (via fetch mock)', () => {
   });
 
   it('parses JSON wrapped in markdown fences', async () => {
-    process.env.OPENAI_API_KEY = 'sk-test';
+    process.env.OPENAI_API_KEY = 'sk-test-key';
     globalThis.fetch = (async () => {
       return new Response(JSON.stringify({
         choices: [{ message: { content: '```json\n{"reply":"hi","suggestions":[],"recommendedSets":[]}\n```' }}],
@@ -75,7 +75,7 @@ describe('OpenAI adapter — parseReply (via fetch mock)', () => {
   });
 
   it('falls back to raw text when no JSON object is present', async () => {
-    process.env.OPENAI_API_KEY = 'sk-test';
+    process.env.OPENAI_API_KEY = 'sk-test-key';
     globalThis.fetch = (async () => {
       return new Response(JSON.stringify({
         choices: [{ message: { content: 'Sure, here you go.' }}],
@@ -88,7 +88,7 @@ describe('OpenAI adapter — parseReply (via fetch mock)', () => {
   });
 
   it('surfaces HTTP error with status + body snippet', async () => {
-    process.env.OPENAI_API_KEY = 'sk-test';
+    process.env.OPENAI_API_KEY = 'sk-test-key';
     globalThis.fetch = (async () => {
       return new Response('rate limit', { status: 429, statusText: 'Too Many Requests' });
     }) as typeof fetch;
@@ -97,7 +97,7 @@ describe('OpenAI adapter — parseReply (via fetch mock)', () => {
   });
 
   it('honors per-adapter apiKey override over env', async () => {
-    process.env.OPENAI_API_KEY = 'sk-env';
+    process.env.OPENAI_API_KEY = 'sk-env-key';
     let sentAuth = '';
     globalThis.fetch = (async (_u, init) => {
       const h = (init?.headers as Record<string, string>) || {};
@@ -137,7 +137,7 @@ describe('Claude adapter — parseReply (via fetch mock)', () => {
   });
 
   it('parses text block from content[]', async () => {
-    process.env.ANTHROPIC_API_KEY='sk-ant-test';
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
     globalThis.fetch = (async () => {
       return new Response(JSON.stringify({
         content: [{ type: 'text', text: JSON.stringify({
@@ -196,5 +196,43 @@ describe('OpenAI adapter — MiniMax compatibility', () => {
     process.env.MINIMAX_API_KEY = 'sk-mm-test-key';
     const a = parseReplyFromOpenai({ baseUrl: 'https://api.openai.com/v1' });
     await expect(a.chat('x', { cwd: '/x' })).rejects.toThrow(/missing API key/);
+  });
+});
+
+describe('resolveAdapterId — env var auto-promotion', () => {
+  afterEach(() => {
+    delete process.env.MINIMAX_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+  });
+
+  it('flag value wins over env', () => {
+    process.env.MINIMAX_API_KEY = 'whatever';
+    expect(resolveAdapterId('openai')).toBe('openai');
+  });
+
+  it('promotes to minimax when MINIMAX_API_KEY is set', () => {
+    process.env.MINIMAX_API_KEY = 'whatever';
+    expect(resolveAdapterId(undefined)).toBe('minimax');
+  });
+
+  it('promotes to openai when only OPENAI_API_KEY is set', () => {
+    process.env.OPENAI_API_KEY = 'whatever';
+    expect(resolveAdapterId(undefined)).toBe('openai');
+  });
+
+  it('promotes to claude when only ANTHROPIC_API_KEY is set', () => {
+    process.env.ANTHROPIC_API_KEY = 'whatever';
+    expect(resolveAdapterId(undefined)).toBe('claude');
+  });
+
+  it('prefers minimax over openai when both keys are set', () => {
+    process.env.MINIMAX_API_KEY = 'mm';
+    process.env.OPENAI_API_KEY = 'oa';
+    expect(resolveAdapterId(undefined)).toBe('minimax');
+  });
+
+  it('falls back to local-keyword when no env keys', () => {
+    expect(resolveAdapterId(undefined)).toBe('local-keyword');
   });
 });

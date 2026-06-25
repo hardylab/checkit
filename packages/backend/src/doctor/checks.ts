@@ -46,36 +46,48 @@ function cliVersion(): string | undefined {
 }
 
 function tryReadVersion(bin: string, prefixToStrip?: string): string | undefined {
-  try {
-    // Aggressive timeout (2s) — agent discovery is best-effort, not critical.
-    const out = execFileSync(bin, ['--version'], {
-      encoding: 'utf-8',
-      timeout: 2_000,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-    });
-    // Use the FIRST non-empty line; version is always first.
-    const firstLine = out.split(/\r?\n/).map((l) => l.trim()).find((l) => l.length > 0);
-    if (!firstLine) return undefined;
-    let token = firstLine.split(/\s+/)[0] || undefined;
-    // Strip optional leading "v" for niceness: "v2.1.109" → "2.1.109"
-    if (token && /^v\d/.test(token)) token = token.slice(1);
-    // Optionally strip a known prefix word (e.g. "git" → "")
-    if (token && prefixToStrip && token.toLowerCase() === prefixToStrip.toLowerCase()) {
-      // The version may follow in any subsequent token: "git version 2.50.1"
-      const parts = firstLine.split(/\s+/);
-      const idx = parts.findIndex((p) => p.toLowerCase() === prefixToStrip.toLowerCase());
-      for (let j = idx + 1; j < parts.length; j++) {
-        if (/^\d/.test(parts[j])) {
-          token = /^v/.test(parts[j]) ? parts[j].slice(1) : parts[j];
-          break;
+  // Try multiple invocations to handle Windows .exe extension and PATH
+  // edge cases. child_process.execFile on Windows does NOT auto-append
+  // ".exe", so for binary names like "hermes" we also try "hermes.exe",
+  // "hermes.cmd", "hermes.bat" via Node's resolution.
+  const candidates = process.platform === 'win32'
+    ? [bin, `${bin}.exe`, `${bin}.cmd`, `${bin}.bat`]
+    : [bin];
+
+  for (const candidate of candidates) {
+    try {
+      // Aggressive timeout (2s) — agent discovery is best-effort, not critical.
+      const out = execFileSync(candidate, ['--version'], {
+        encoding: 'utf-8',
+        timeout: 2_000,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      });
+      // Use the FIRST non-empty line; version is always first.
+      const firstLine = out.split(/\r?\n/).map((l) => l.trim()).find((l) => l.length > 0);
+      if (!firstLine) continue;
+      let token = firstLine.split(/\s+/)[0] || undefined;
+      // Strip optional leading "v" for niceness: "v2.1.109" → "2.1.109"
+      if (token && /^v\d/.test(token)) token = token.slice(1);
+      // Optionally strip a known prefix word (e.g. "git" → "")
+      if (token && prefixToStrip && token.toLowerCase() === prefixToStrip.toLowerCase()) {
+        // The version may follow in any subsequent token: "git version 2.50.1"
+        const parts = firstLine.split(/\s+/);
+        const idx = parts.findIndex((p) => p.toLowerCase() === prefixToStrip.toLowerCase());
+        for (let j = idx + 1; j < parts.length; j++) {
+          if (/^\d/.test(parts[j])) {
+            token = /^v/.test(parts[j]) ? parts[j].slice(1) : parts[j];
+            break;
+          }
         }
       }
+      return token;
+    } catch {
+      // try next candidate
+      continue;
     }
-    return token;
-  } catch {
-    return undefined;
   }
+  return undefined;
 }
 
 function checkNode(): CheckResult {
