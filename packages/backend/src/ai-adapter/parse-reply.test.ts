@@ -137,7 +137,7 @@ describe('Claude adapter — parseReply (via fetch mock)', () => {
   });
 
   it('parses text block from content[]', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    process.env.ANTHROPIC_API_KEY='sk-ant-test';
     globalThis.fetch = (async () => {
       return new Response(JSON.stringify({
         content: [{ type: 'text', text: JSON.stringify({
@@ -167,5 +167,34 @@ describe('Claude adapter — parseReply (via fetch mock)', () => {
 
     await parseReplyFromClaude().chat('x', { cwd: '/x' });
     expect(sentHeader).toBe('sk-ant-x');
+  });
+});
+
+describe('OpenAI adapter — MiniMax compatibility', () => {
+  afterEach(() => {
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.MINIMAX_API_KEY;
+  });
+
+  it('accepts MINIMAX_API_KEY when baseUrl is MiniMax', async () => {
+    process.env.MINIMAX_API_KEY = 'sk-mm-test-key';
+    let authHeader = '';
+    globalThis.fetch = (async (_u, init) => {
+      const h = (init?.headers as Record<string, string>) || {};
+      authHeader = h['Authorization'] || '';
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: '{"reply":"ok","suggestions":[],"recommendedSets":[]}' }}],
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    const a = parseReplyFromOpenai({ baseUrl: 'https://api.minimaxi.com/v1' });
+    await a.chat('x', { cwd: '/x' });
+    expect(authHeader).toBe('Bearer sk-mm-test-key');
+  });
+
+  it('does NOT accept MINIMAX_API_KEY for plain OpenAI endpoint', async () => {
+    process.env.MINIMAX_API_KEY = 'sk-mm-test-key';
+    const a = parseReplyFromOpenai({ baseUrl: 'https://api.openai.com/v1' });
+    await expect(a.chat('x', { cwd: '/x' })).rejects.toThrow(/missing API key/);
   });
 });

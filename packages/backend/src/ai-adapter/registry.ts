@@ -9,7 +9,13 @@ import { makeOpenAIAdapter } from './openai.js';
 import { makeClaudeAdapter } from './claude.js';
 import type { AiAdapter, AdapterConfig } from './types.js';
 
-export const KNOWN_ADAPTERS = ['local-keyword', 'openai', 'claude'] as const;
+// MiniMax API (https://api.minimaxi.com) is OpenAI-compatible.
+// Default baseUrl ends in /v1 so it concatenates cleanly with the path
+// used by the OpenAI adapter (`/chat/completions`).
+const MINIMAX_BASE_URL = 'https://api.minimaxi.com/v1';
+const MINIMAX_MODEL = 'MiniMax-M3';
+
+export const KNOWN_ADAPTERS = ['local-keyword', 'openai', 'claude', 'minimax'] as const;
 export type KnownAdapterId = typeof KNOWN_ADAPTERS[number];
 
 export function isKnownAdapter(id: string): id is KnownAdapterId {
@@ -23,6 +29,7 @@ export function isKnownAdapter(id: string): id is KnownAdapterId {
  *   1. 显式传入的 cfg
  *   2. ~/.checkit/config.json (ai.api_key / ai.model / ai.base_url)
  *   3. env var (OPENAI_API_KEY / ANTHROPIC_API_KEY 等)
+ *   4. 对 minimax id:默认 baseUrl + model(可被 cfg/config 覆盖)
  *
  * 注意:env var 在各 adapter 内部读取,这里只读 config.json。
  */
@@ -42,20 +49,32 @@ export function getAdapter(id: string, cfg: AdapterConfig = {}): AiAdapter {
     /* config file missing/corrupt — skip */
   }
 
-  const merged: AdapterConfig = {
-    apiKey: cfg.apiKey ?? cfgApiKey,
-    model: cfg.model ?? cfgModel,
-    baseUrl: cfg.baseUrl ?? cfgBaseUrl,
-    timeoutMs: cfg.timeoutMs,
-  };
-
   switch (id) {
     case 'local-keyword':
       return makeLocalKeywordAdapter();
     case 'openai':
-      return makeOpenAIAdapter(merged);
+      return makeOpenAIAdapter({
+        apiKey: cfg.apiKey ?? cfgApiKey,
+        model: cfg.model ?? cfgModel,
+        baseUrl: cfg.baseUrl ?? cfgBaseUrl,
+        timeoutMs: cfg.timeoutMs,
+      });
     case 'claude':
-      return makeClaudeAdapter(merged);
+      return makeClaudeAdapter({
+        apiKey: cfg.apiKey ?? cfgApiKey,
+        model: cfg.model ?? cfgModel,
+        baseUrl: cfg.baseUrl ?? cfgBaseUrl,
+        timeoutMs: cfg.timeoutMs,
+      });
+    case 'minimax':
+      // MiniMax uses OpenAI-compatible API; reuse the OpenAI adapter.
+      // Defaults: baseUrl = https://api.minimaxi.com/v1, model = MiniMax-M3.
+      return makeOpenAIAdapter({
+        apiKey: cfg.apiKey ?? cfgApiKey,
+        model: cfg.model ?? cfgModel ?? MINIMAX_MODEL,
+        baseUrl: cfg.baseUrl ?? cfgBaseUrl ?? MINIMAX_BASE_URL,
+        timeoutMs: cfg.timeoutMs,
+      });
     default:
       throw new Error(
         `unknown adapter: "${id}". Known: ${KNOWN_ADAPTERS.join(', ')}.\n` +

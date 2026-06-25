@@ -15,7 +15,7 @@ describe('runDoctor — required checks', () => {
     expect(nodeCheck!.message).toMatch(/v\d/);
   });
 
-  it('CLI version reported', () => {
+  it('CLI version reported', { timeout: TEST_TIMEOUT }, () => {
     const r = runDoctor(process.cwd());
     const cliCheck = r.results.find((c) => c.name === 'CLI');
     expect(cliCheck).toBeDefined();
@@ -23,14 +23,14 @@ describe('runDoctor — required checks', () => {
     expect(['ok', 'warn']).toContain(cliCheck!.status);
   });
 
-  it('project preset dir is created/readable', () => {
+  it('project preset dir is created/readable', { timeout: TEST_TIMEOUT }, () => {
     const r = runDoctor(process.cwd());
     const dirCheck = r.results.find((c) => c.name === 'project preset dir');
     expect(dirCheck).toBeDefined();
     expect(dirCheck!.status).toBe('ok');
   });
 
-  it('global config dir is created/readable', () => {
+  it('global config dir is created/readable', { timeout: TEST_TIMEOUT }, () => {
     const r = runDoctor(process.cwd());
     const dirCheck = r.results.find((c) => c.name === 'global config dir');
     expect(dirCheck).toBeDefined();

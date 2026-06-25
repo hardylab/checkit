@@ -137,7 +137,14 @@ function parseReply(raw: string): ChatReply {
 }
 
 export function makeOpenAIAdapter(cfg: AdapterConfig = {}): AiAdapter {
-  const apiKey = cfg.apiKey ?? process.env.OPENAI_API_KEY;
+  // When baseUrl points at MiniMax (api.minimaxi.com), accept either
+  // OPENAI_API_KEY or MINIMAX_API_KEY from the environment. Anywhere
+  // else, OPENAI_API_KEY only.
+  const isMiniMax = (cfg.baseUrl ?? '').includes('api.minimaxi.com');
+  const envKey = isMiniMax
+    ? (process.env.MINIMAX_API_KEY ?? process.env.OPENAI_API_KEY)
+    : process.env.OPENAI_API_KEY;
+  const apiKey = cfg.apiKey ?? envKey;
   const baseUrl = (cfg.baseUrl ?? process.env.OPENAI_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/$/, '');
   const model = cfg.model ?? process.env.OPENAI_MODEL ?? DEFAULT_MODEL;
   const timeoutMs = cfg.timeoutMs ?? DEFAULT_TIMEOUT_MS;
