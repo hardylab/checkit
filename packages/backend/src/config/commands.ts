@@ -11,6 +11,7 @@
 //   lintany config list
 //   lintany config unset ai.adapter
 
+import fs from 'node:fs';
 import {
   setConfig,
   getConfig,
@@ -102,7 +103,14 @@ export function cmdConfigList(args: string[], _cwd: string): void {
     return;
   }
   if (keys.length === 0) {
-    console.log(`(empty — ${configFilePath()} does not exist yet)`);
+    // Distinguish "no config file" vs "empty config file" — both are valid
+    // (unsetConfig leaves {} on disk for atomic-write safety).
+    if (!fs.existsSync(configFilePath())) {
+      console.log(`(empty — ${configFilePath()} does not exist yet)`);
+    } else {
+      console.log(`${configFilePath()}`);
+      console.log('  (no keys set)');
+    }
     return;
   }
   console.log(`${configFilePath()}`);

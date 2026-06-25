@@ -7,6 +7,7 @@
 //
 // `--no-tui` + `--json` 是为 CI 设计的:输出结构化 JSON 到 stdout,无 stdin TTY。
 
+import { getAdapter, resolveAdapterId } from '../ai-adapter';
 import { chatReply, type ChatReply } from './keyword-adapter.js';
 
 function hasFlag(args: string[], name: string): boolean {
@@ -41,11 +42,11 @@ function die(msg: string, code = 1): never {
   process.exit(code);
 }
 
-export async function cmdChat(args: string[], _cwd: string): Promise<void> {
+export async function cmdChat(args: string[], cwd: string): Promise<void> {
   const noTui = hasFlag(args, '--no-tui');
   const asJson = hasFlag(args, '--json');
   const useStdin = hasFlag(args, '--stdin');
-  const adapter = flag(args, '--adapter') ?? 'local-keyword';
+  const adapterFlag = flag(args, '--adapter');
 
   let message: string;
   if (useStdin) {
@@ -58,16 +59,35 @@ export async function cmdChat(args: string[], _cwd: string): Promise<void> {
   if (!message) {
     if (noTui || asJson) {
       // CI mode: emit empty-result JSON, exit 0 (not an error — empty input is valid)
-      console.log(JSON.stringify({ reply: '', suggestions: [], recommendedSets: [], adapter, message: '' }));
+      console.log(JSON.stringify({ reply: '', suggestions: [], recommendedSets: [], adapter: 'local-keyword', message: '' }));
       return;
     }
-    die('chat: message required\n  usage: lintany chat "<message>" [--no-tui] [--json] [--stdin]');
+    die('chat: message required\n  usage: lintany chat "<message>" [--no-tui] [--json] [--stdin] [--adapter openai|claude|local-keyword]');
   }
 
-  const reply = await chatReply(message, { adapter });
+  const adapterId = resolveAdapterId(adapterFlag);
+  let reply: ChatReply;
+  try {
+    const adapter = getAdapter(adapterId);
+    reply = await adapter.chat(message, { cwd });
+  } catch (e) {
+    // Adapter construction or call failed — surface a clean error.
+    if (noTui || asJson) {
+      console.log(JSON.stringify({
+        adapter: adapterId,
+        message,
+        error: (e as Error).message,
+        reply: '',
+        suggestions: [],
+        recommendedSets: [],
+      }, null, 2));
+      process.exit(1);
+    }
+    die((e as Error).message);
+  }
 
   if (asJson) {
-    const out = { adapter, message, ...reply };
+    const out = { adapter: adapterId, message, ...reply };
     console.log(JSON.stringify(out, null, 2));
     return;
   }
@@ -98,7 +118,7 @@ export async function cmdChat(args: string[], _cwd: string): Promise<void> {
   // For Phase 1 we always emit non-tui unless stdin is TTY + no --no-tui.
   // Detect TTY: if not TTY (e.g. CI), fall back to --no-tui behavior.
   if (!process.stdin.isTTY) {
-    return cmdChat([...args, '--no-tui'], _cwd);
+    return cmdChat([...args, '--no-tui'], cwd);
   }
 
   // TTY path: print reply, prompt once, then exit. (Multi-turn REPL is Phase 3.)
