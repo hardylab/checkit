@@ -76,10 +76,17 @@ export function getAdapter(id: string, cfg: AdapterConfig = {}): AiAdapter {
         timeoutMs: cfg.timeoutMs,
       });
     default:
-      throw new Error(
-        `unknown adapter: "${id}". Known: ${KNOWN_ADAPTERS.join(', ')}.\n` +
-        `Set with: lintany config set ai.adapter <id>`,
-      );
+      // Unknown adapter id — treat as OpenAI-compatible (covers custom
+      // providers the user typed in via the Settings modal: deepseek,
+      // doubao, moonshot, etc., all of which expose /v1/chat/completions
+      // style endpoints). We use the configured baseUrl + apiKey + model
+      // verbatim. Falls through to MiniMax defaults if no baseUrl.
+      return makeOpenAIAdapter({
+        apiKey: cfg.apiKey ?? cfgApiKey,
+        model: cfg.model ?? cfgModel,
+        baseUrl: cfg.baseUrl ?? cfgBaseUrl,
+        timeoutMs: cfg.timeoutMs,
+      });
   }
 }
 
