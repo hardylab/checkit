@@ -1087,3 +1087,14 @@ main { grid-column: 2; grid-row: 2; overflow-y: auto; min-width: 0; }
   display: flex;
   gap: 8px;
 }
+
+.settings-addform {
+  padding: 14px;
+  background: var(--surface-2);
+  border-radius: var(--r);
+  border: 1px dashed var(--border-strong, var(--border));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.settings-addform .settings-field { gap: 4px; }
