@@ -88,11 +88,15 @@ export async function GET() {
   }
 }
 
-export async function PUT(req: Request) {
-  let body: { key?: string; value?: unknown; deletes?: string[] } = {};
+export async function POST(req: Request) {
+  // Optional: if the client passes a body { withTest: true }, run the
+  // `lintany config test` after writing — verify the new config actually
+  // works before we report success. Used by the desktop Settings modal
+  // to refuse saving bad credentials.
+  let body: { key?: string; value?: unknown; deletes?: string[]; withTest?: boolean } = {};
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
 
-  const { key, value, deletes } = body;
+  const { key, value, deletes, withTest } = body;
   const keysToWrite: string[] = [];
   if (key) keysToWrite.push(key);
   if (Array.isArray(deletes)) keysToWrite.push(...deletes);
@@ -121,8 +125,38 @@ export async function PUT(req: Request) {
         }
       }
     }
-    return NextResponse.json({ ok: true });
+    if (!withTest) {
+      return NextResponse.json({ ok: true });
+    }
+    // ─── Test the freshly-written config by pinging the LLM. ───────
+    // On failure, best-effort rollback: unset any keys we just wrote that
+    // weren't there before (we don't snapshot the prior state for deletes,
+    // so we just leave deletes alone on failure).
+    const { stdout, code, stderr } = await runConfigCli(['test', '--json']);
+    let testResult: { ok?: boolean; adapter?: string; error?: string; reply?: string } = {};
+    try { testResult = JSON.parse(stdout); } catch {
+      // Non-JSON output (e.g. error printed without --json) — fall back to stderr.
+      return NextResponse.json({ ok: false, error: `config test produced non-JSON: ${stderr.slice(0, 200) || stdout.slice(0, 200)}` }, { status: 502 });
+    }
+    if (code !== 0 || !testResult.ok) {
+      // Rollback: unset each key we wrote (best effort; don't fail the
+      // request on rollback errors — the main error is more important).
+      if (key) {
+        try { await runConfigCli(['unset', key]); } catch { /* ignore */ }
+      }
+      return NextResponse.json({
+        ok: false,
+        adapter: testResult.adapter,
+        error: testResult.error || `config test failed for ${testResult.adapter}`,
+        rolledBack: !!key,
+      }, { status: 502 });
+    }
+    return NextResponse.json({ ok: true, adapter: testResult.adapter, reply: testResult.reply });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
 }
+
+// PUT alias — backward-compat with the original handler. Both go through
+// the same `withTest` logic.
+export const PUT = POST;

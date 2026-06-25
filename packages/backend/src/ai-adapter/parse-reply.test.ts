@@ -200,10 +200,27 @@ describe('OpenAI adapter — MiniMax compatibility', () => {
 });
 
 describe('resolveAdapterId — env var auto-promotion', () => {
+  let savedHome: string | undefined;
+  let savedProfile: string | undefined;
+  beforeEach(() => {
+    // Point HOME at a throwaway dir so the user's real ~/.checkit/config.json
+    // doesn't leak in (e.g. an existing ai.adapter='DeepSeek' would mask
+    // our env-driven auto-promote tests).
+    savedHome = process.env.HOME;
+    savedProfile = process.env.USERPROFILE;
+    const tmp = require('node:os').tmpdir() + '/lintany-test-' + Date.now();
+    require('node:fs').mkdirSync(tmp, { recursive: true });
+    process.env.HOME = tmp;
+    process.env.USERPROFILE = tmp;
+  });
   afterEach(() => {
     delete process.env.MINIMAX_API_KEY;
     delete process.env.OPENAI_API_KEY;
     delete process.env.ANTHROPIC_API_KEY;
+    if (savedHome === undefined) delete process.env.HOME;
+    else process.env.HOME = savedHome;
+    if (savedProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = savedProfile;
   });
 
   it('flag value wins over env', () => {

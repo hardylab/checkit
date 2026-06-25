@@ -137,6 +137,94 @@ export function cmdConfigUnset(args: string[], _cwd: string): void {
 }
 
 // ─────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────
+// config test — verify the configured LLM is reachable + authenticated.
+// Sends a short "ping" message and reports the adapter + reply status.
+// Used by desktop SettingsModal to refuse saves that point at a broken
+// provider (wrong key, bad URL, 401, network down, etc.).
+// ─────────────────────────────────────────────────────────
+export async function cmdConfigTest(args: string[], cwd: string): Promise<void> {
+  const asJson = hasFlag(args, '--json');
+  const adapter = getConfig('ai.adapter').value ?? 'local-keyword';
+  const model = getConfig('ai.model').value as string | undefined;
+  const baseUrl = getConfig('ai.base_url').value as string | undefined;
+  const apiKey = getConfig('ai.api_key').value as string | undefined;
+
+  // local-keyword is trivially "reachable" — no LLM call.
+  if (adapter === 'local-keyword') {
+    const out = {
+      ok: true,
+      adapter,
+      model: model ?? '(no LLM)',
+      reply: 'local-keyword: offline, no LLM call',
+      replyLength: 0,
+    };
+    if (asJson) {
+      console.log(JSON.stringify(out, null, 2));
+    } else {
+      console.log(`✓ ${out.adapter}: ${out.reply}`);
+    }
+    return;
+  }
+
+  // Build a fresh adapter and ping it. We do NOT use the registry's auto-
+  // promote-from-env logic — the user just saved this config, we want to
+  // verify *this* config, not whatever env var is in scope.
+  let pingResult;
+  try {
+    const { makeOpenAIAdapter } = await import('../ai-adapter/openai.js');
+    const { makeClaudeAdapter } = await import('../ai-adapter/claude.js');
+    let adapterInstance;
+    if (adapter === 'claude') {
+      adapterInstance = makeClaudeAdapter({ apiKey, model, baseUrl });
+    } else {
+      // openai / minimax / custom / ollama — all OpenAI-compatible.
+      adapterInstance = makeOpenAIAdapter({ apiKey, model, baseUrl });
+    }
+    pingResult = await adapterInstance.chat('Reply with the single word: pong', { cwd });
+  } catch (e) {
+    const out = {
+      ok: false,
+      adapter,
+      model: model ?? null,
+      baseUrl: baseUrl ?? null,
+      error: (e as Error).message,
+    };
+    if (asJson) {
+      console.log(JSON.stringify(out, null, 2));
+    } else {
+      console.error(`✗ ${adapter}: ${out.error}`);
+    }
+    if (asJson) process.exit(1);
+    die(`${adapter}: ${out.error}`);
+  }
+
+  // The LLM call succeeded. Use reply length as a sanity check — an empty
+  // reply or a 1-char echo suggests the model is misconfigured.
+  const reply = pingResult.reply ?? '';
+  const replyLength = reply.trim().length;
+  const ok = replyLength > 0;
+  const out = {
+    ok,
+    adapter,
+    model: model ?? null,
+    baseUrl: baseUrl ?? null,
+    reply,
+    replyLength,
+    ...(ok ? {} : { warning: 'empty reply — provider returned nothing' }),
+  };
+  if (asJson) {
+    console.log(JSON.stringify(out, null, 2));
+  } else {
+    if (ok) {
+      console.log(`✓ ${adapter} (${out.model ?? 'default model'}): ${reply.slice(0, 80)}${reply.length > 80 ? '…' : ''}`);
+    } else {
+      console.error(`⚠ ${adapter}: empty reply`);
+    }
+  }
+  if (!ok) process.exit(1);
+}
+
 // dispatch
 // ─────────────────────────────────────────────────────────
 export const CONFIG_COMMANDS = {
@@ -144,6 +232,7 @@ export const CONFIG_COMMANDS = {
   get: cmdConfigGet,
   list: cmdConfigList,
   unset: cmdConfigUnset,
+  test: cmdConfigTest,
 } as const;
 
 export type ConfigCommandName = keyof typeof CONFIG_COMMANDS;

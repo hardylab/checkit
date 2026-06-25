@@ -56,6 +56,7 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [verifiedAdapter, setVerifiedAdapter] = useState<string | null>(null);
 
   // Form state
   const [provider, setProvider] = useState<string>('local-keyword');
@@ -111,6 +112,13 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
     setSaving(true);
     setError(null);
     try {
+      // For the "adapter" + "api_key" pair we want test-on-save (verify
+      // the LLM is reachable with the new credentials). For other field
+      // changes (model, baseUrl) we skip the test.
+      const wantsTest = !!(
+        (key && (key === 'ai.adapter' || key === 'ai.api_key' || key === 'ai.base_url'))
+        || (Array.isArray(deletes) && deletes.some((k) => k === 'ai.adapter' || k === 'ai.api_key' || k === 'ai.base_url'))
+      );
       const writes: Array<{ key: string; value: string }> = [];
       const deletes: string[] = [];
 
@@ -146,14 +154,26 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
 
       // POST each write. Keep simple — fire sequentially.
       for (const w of writes) {
+        const body: { key: string; value: string; withTest?: boolean } = { key: w.key, value: w.value };
+        if (wantsTest && (w.key === 'ai.adapter' || w.key === 'ai.api_key' || w.key === 'ai.base_url')) {
+          body.withTest = true;
+        }
         const r = await fetch('/api/config', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key: w.key, value: w.value }),
+          body: JSON.stringify(body),
         });
+        const j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
         if (!r.ok) {
-          const j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
           throw new Error(`set ${w.key}: ${j.error || r.statusText}`);
+        }
+        if (body.withTest && j.rolledBack) {
+          throw new Error(`set ${w.key} rolled back: ${j.error}`);
+        }
+        if (body.withTest) {
+          // Test passed — show "verified" hint in the success banner.
+          setVerifiedAdapter(j.adapter ?? 'unknown');
+          setSavedAt(Date.now());
         }
       }
       for (const k of deletes) {
@@ -167,7 +187,7 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
           throw new Error(`unset ${k}: ${j.error || r.statusText}`);
         }
       }
-      setSavedAt(Date.now());
+      if (!savedAt) setSavedAt(Date.now());
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -329,7 +349,15 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
 
             {error && <div className="settings-error">⚠ {error}</div>}
             {!error && savedAt && (
-              <div className="settings-success">✓ 已保存到 {configFile || '~/.checkit/config.json'}</div>
+              <div className="settings-success">
+                ✓ 已保存到 {configFile || '~/.checkit/config.json'}
+                {verifiedAdapter && verifiedAdapter !== 'local-keyword' && (
+                  <> · 已验证 <code>{verifiedAdapter}</code> 可达</>
+                )}
+                {verifiedAdapter === 'local-keyword' && (
+                  <> · local-keyword 无需验证</>
+                )}
+              </div>
             )}
           </div>
         )}
