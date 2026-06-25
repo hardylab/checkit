@@ -29,6 +29,8 @@ import { loadFullConfig, type ResolvedRuleEntry } from './config';
 import { PRESET_COMMANDS, type PresetCommandName } from './preset';
 import { CONFIG_COMMANDS, type ConfigCommandName } from './config/commands';
 import { cmdChat } from './chat';
+import { cmdDoctor } from './doctor';
+import { runUpload } from './scan/upload';
 
 export interface CLIOptions {
   cwd?: string;
@@ -214,15 +216,26 @@ export async function runCLI(options?: CLIOptions) {
     preset: PRESET_COMMANDS as unknown as Record<string, (args: string[], cwd: string) => void | Promise<void>>,
     config: CONFIG_COMMANDS as unknown as Record<string, (args: string[], cwd: string) => void | Promise<void>>,
     chat: null, // async, special-cased below
+    doctor: { '': (a, cwd) => cmdDoctor(a, cwd) } as unknown as Record<string, (args: string[], cwd: string) => void | Promise<void>>, // doctor has no subcommand
   };
 
   if (firstNonFlag && Object.prototype.hasOwnProperty.call(KNOWN_NAMESPACES, firstNonFlag)) {
-    const ns = firstNonFlag as 'preset' | 'config' | 'chat';
+    const ns = firstNonFlag as 'preset' | 'config' | 'chat' | 'doctor';
 
     if (ns === 'chat') {
       // chat 是 async,且接受 positional message(无 sub)
       try {
         await cmdChat(args.slice(args.indexOf('chat') + 1), cwd);
+        return;
+      } catch (e) {
+        console.error(`error: ${(e as Error).message}`);
+        process.exit(1);
+      }
+    }
+
+    if (ns === 'doctor') {
+      try {
+        cmdDoctor(args.slice(args.indexOf('doctor') + 1), cwd);
         return;
       } catch (e) {
         console.error(`error: ${(e as Error).message}`);
@@ -252,6 +265,25 @@ export async function runCLI(options?: CLIOptions) {
       console.error(`error: ${(e as Error).message}`);
       process.exit(1);
     }
+  }
+
+  // ─── 0b. scan --upload <file> — short-circuit before parseArgs ─────
+  // --upload 跳过 file scan,直接读 JSON 当 issues 输出。
+  const uploadIdx = args.indexOf('--upload');
+  if (uploadIdx !== -1) {
+    const uploadFile = args[uploadIdx + 1];
+    if (!uploadFile || uploadFile.startsWith('--')) {
+      console.error('error: --upload <file> required');
+      process.exit(1);
+    }
+    const reporter = args.includes('--json')
+      ? 'json'
+      : args.includes('--reporter') && args[args.indexOf('--reporter') + 1] === 'silent'
+        ? 'silent'
+        : 'stylish';
+    const exitOnError = args.includes('--exit-on-error');
+    const code = runUpload({ file: uploadFile, reporter, exitOnError });
+    process.exit(code);
   }
 
   // 1. parseArgs —— always parse argv, even when options is passed.
