@@ -112,13 +112,6 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
     setSaving(true);
     setError(null);
     try {
-      // For the "adapter" + "api_key" pair we want test-on-save (verify
-      // the LLM is reachable with the new credentials). For other field
-      // changes (model, baseUrl) we skip the test.
-      const wantsTest = !!(
-        (key && (key === 'ai.adapter' || key === 'ai.api_key' || key === 'ai.base_url'))
-        || (Array.isArray(deletes) && deletes.some((k) => k === 'ai.adapter' || k === 'ai.api_key' || k === 'ai.base_url'))
-      );
       const writes: Array<{ key: string; value: string }> = [];
       const deletes: string[] = [];
 
@@ -152,10 +145,17 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
       if (apiKey) writes.push({ key: 'ai.api_key', value: apiKey });
       else deletes.push('ai.api_key');
 
+      // Whether any of the writes/deletes touches a key that needs LLM
+      // verification (adapter / api_key / base_url).
+      const NEEDS_TEST_KEYS = new Set(['ai.adapter', 'ai.api_key', 'ai.base_url']);
+      const needsTest =
+        writes.some((w) => NEEDS_TEST_KEYS.has(w.key)) ||
+        deletes.some((k) => NEEDS_TEST_KEYS.has(k));
+
       // POST each write. Keep simple — fire sequentially.
       for (const w of writes) {
         const body: { key: string; value: string; withTest?: boolean } = { key: w.key, value: w.value };
-        if (wantsTest && (w.key === 'ai.adapter' || w.key === 'ai.api_key' || w.key === 'ai.base_url')) {
+        if (needsTest && NEEDS_TEST_KEYS.has(w.key)) {
           body.withTest = true;
         }
         const r = await fetch('/api/config', {
