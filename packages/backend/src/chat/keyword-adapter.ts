@@ -215,20 +215,52 @@ function readMspContext(): string {
   return '';
 }
 
+/** Localized reply templates. The adapter picks the variant whose language
+ * best matches the user's message (CJK chars → zh; Latin alphabet → en).
+ * Falls back to English when nothing matches.
+ */
+const REPLY_NO_MATCH = {
+  en: (msg: string) =>
+    `I matched no rule or preset for "${msg}". Try a broader phrasing like ` +
+    `"TypeScript strict" / "credentials" / "gitignore" / "function size" / "test coverage".`,
+  zh: (msg: string) =>
+    `没有匹配到 "${msg}" 的规则或预设。试更具体的描述,例如 ` +
+    `"TypeScript 严格模式" / "硬编码凭证" / ".gitignore 检查" / "函数长度限制" / "测试覆盖率"。`,
+};
+
+const REPLY_MATCHED = {
+  en: (msg: string, setCount: number, ruleCount: number, ruleIds: string[]) =>
+    `Matched ${[setCount > 0 ? `${setCount} preset candidate(s)` : null,
+              ruleCount > 0 ? `${ruleCount} specific rule(s)` : null].filter(Boolean).join(' + ')} ` +
+    `for "${msg}". Run: lintany preset new <name> --rules ${ruleIds.join(',')}`,
+  zh: (msg: string, setCount: number, ruleCount: number, ruleIds: string[]) =>
+    `为 "${msg}" 匹配到 ${[setCount > 0 ? `${setCount} 个候选预设` : null,
+                            ruleCount > 0 ? `${ruleCount} 条具体规则` : null].filter(Boolean).join(' + ')}。` +
+    `运行: lintany preset new <name> --rules ${ruleIds.join(',')}`,
+};
+
+const REPLY_EMPTY = {
+  en: 'Empty message. Ask me about rules or presets.',
+  zh: '消息为空。告诉我你想加强什么(安全 / TypeScript / 测试 / 文档等)。',
+};
+
+/** Heuristic language detection: any CJK char → zh, otherwise en.
+ * Empty/whitespace input defaults to zh (the desktop UI's primary language).
+ */
+function detectLang(msg: string): 'en' | 'zh' {
+  const trimmed = msg.trim();
+  if (!trimmed) return 'zh';
+  return /[\u4e00-\u9fff\u3400-\u4dbf]/.test(trimmed) ? 'zh' : 'en';
+}
+
 function makeReply(msg: string, ruleIds: string[], sets: Array<{ id: string; name: string; description: string }>): ChatReply {
   const suggestions = ruleIds.map(lookupRuleMeta);
+  const lang = detectLang(msg);
   let reply: string;
   if (suggestions.length === 0 && sets.length === 0) {
-    reply =
-      `I matched no rule or preset for "${msg}". Try a broader phrasing like ` +
-      `"TypeScript strict" / "credentials" / "gitignore" / "function size" / "test coverage".`;
+    reply = REPLY_NO_MATCH[lang](msg);
   } else {
-    const parts: string[] = [];
-    if (sets.length > 0) parts.push(`${sets.length} preset candidate(s)`);
-    if (suggestions.length > 0) parts.push(`${suggestions.length} specific rule(s)`);
-    reply =
-      `Matched ${parts.join(' + ')} for "${msg}". ` +
-      `Run: lintany preset new <name> --rules ${suggestions.map((s) => s.id).join(',')}`;
+    reply = REPLY_MATCHED[lang](msg, sets.length, suggestions.length, suggestions.map((s) => s.id));
   }
   return { reply, suggestions, recommendedSets: sets };
 }
@@ -247,7 +279,7 @@ export async function chatReply(msg: string, _opts: ChatOptions = {}): Promise<C
   const trimmed = msg.trim();
   if (!trimmed) {
     return {
-      reply: 'Empty message. Ask me about rules or presets.',
+      reply: REPLY_EMPTY[detectLang(msg)],
       suggestions: [],
       recommendedSets: [],
     };

@@ -1,6 +1,7 @@
 'use client';
-import React from 'react';
+import React, { useState } from 'react';
 import { type ViewId, type ViewState, RAIL_TABS } from '../views/registry';
+import { SettingsModal } from './SettingsModal';
 
 const Icon = ({ children, size = 18 }: { children: React.ReactNode; size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">{children}</svg>
@@ -40,6 +41,7 @@ export function Shell({
 }) {
   const viewId: ViewId = typeof view === 'string' ? view : view.id;
   const activeTab = parentTabId(viewId);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
     <>
@@ -77,10 +79,18 @@ export function Shell({
           ))}
         </nav>
         <div className="rail-actions">
-          <button className="rail-icon" type="button" aria-label="设置" title="设置">{ICON_SETTINGS}</button>
+          <button
+            className="rail-icon"
+            type="button"
+            aria-label="设置"
+            title="设置 LLM 供应商 / API key / 模型"
+            data-testid="rail-icon-settings"
+            onClick={() => setSettingsOpen(true)}
+          >{ICON_SETTINGS}</button>
         </div>
       </aside>
       <main data-view={viewId} data-testid={`view-${viewId}`}>{children}</main>
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </>
   );
 }

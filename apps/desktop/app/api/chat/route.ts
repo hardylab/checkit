@@ -15,6 +15,15 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { RULE_SETS, type RuleSet } from '../../lib/rule-sets';
 
+/** POSIX shell-quote (single-quote + escape embedded single quotes).
+ * Used only when we route through `cmd.exe /c "..."` on Windows.
+ */
+function shellQuote(s: string): string {
+  // For cmd.exe, wrap in double quotes and escape internal " as "".
+  // Messages shouldn't contain " but be defensive.
+  return '"' + s.replace(/"/g, '""') + '"';
+}
+
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
 
@@ -47,20 +56,74 @@ function findCliBinary(): string {
   throw new Error('Could not locate packages/backend/dist/cli.cjs — run `pnpm --filter @checkit/cli build` first');
 }
 
-/** Spawn `lintany chat --no-tui --json <message>` and return parsed reply. */
+/** Spawn `lintany chat --no-tui --json <message>` and return parsed reply.
+ *
+ * stdout collection uses raw Buffer + iconv-lite-free heuristic: we
+ * accumulate bytes and try UTF-8 first, then fall back to GBK if the
+ * output contains a UTF-8 replacement character (a sign the bytes weren't
+ * actually UTF-8). This avoids the mojibake you get when you blindly
+ * decode Windows console output (default code page 936) as UTF-8.
+ */
 function callLintanyChat(message: string): Promise<AiAdapterReply> {
   return new Promise((resolve, reject) => {
     const bin = findCliBinary();
-    const child = spawn(process.execPath, [bin, 'chat', '--no-tui', '--json', message], {
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+    // LINTANY_FORCE_UTF8_STDOUT=1 tells the CLI child to write raw UTF-8
+    // bytes to stdout, bypassing Node's console code page handling.
+    //
+    // We pass the user message by writing it to a temp file (UTF-8 bytes)
+    // and passing the file path via env LINTANY_CHAT_MESSAGE_FILE. This
+    // sidesteps Node's spawn-arg encoding on Windows (cp936/GBK) which
+    // would mojibake Chinese characters before they reach the child.
+    //
+    // Stdin is also a clean path (UTF-8 by default), but the child CLI
+    // has existing argv handling we don't want to disturb. File-path
+    // via env is the most reliable.
+    //
+    // TODO: when the desktop /api/chat and CLI share a workspace, switch
+    // to direct in-process import of @checkit/cli for ~zero overhead.
+    const fs = require('node:fs') as typeof import('node:fs');
+    const os = require('node:os') as typeof import('node:os');
+    const path = require('node:path') as typeof import('node:path');
+    const tmpFile = path.join(os.tmpdir(), `lintany-msg-${Date.now()}-${process.pid}.txt`);
+    fs.writeFileSync(tmpFile, message, 'utf-8');
+    // Debug: confirm the message was written correctly.
+    // eslint-disable-next-line no-console
+    console.warn(`[chat-debug] wrote ${message.length} chars to ${tmpFile}; first16 hex of file: ${fs.readFileSync(tmpFile).slice(0, 16).toString('hex')}`);
+    const child = spawn(process.execPath, [bin, 'chat', '--no-tui', '--json'], {
+      env: {
+        ...process.env,
+        ELECTRON_RUN_AS_NODE: '1',
+        LINTANY_FORCE_UTF8_STDOUT: '1',
+        LINTANY_CHAT_MESSAGE_FILE: tmpFile,
+      },
+      windowsHide: true,
     });
-    let stdout = '';
-    let stderr = '';
-    child.stdout.on('data', (c) => { stdout += c.toString('utf-8'); });
-    child.stderr.on('data', (c) => { stderr += c.toString('utf-8'); });
+    // Cleanup the temp file once the child closes.
+    child.on('close', () => {
+      try { fs.unlinkSync(tmpFile); } catch { /* best effort */ }
+    });
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    child.stdout.on('data', (c: Buffer) => { stdoutChunks.push(c); });
+    child.stderr.on('data', (c: Buffer) => { stderrChunks.push(c); });
     child.on('error', reject);
     child.on('close', (code) => {
-      // Empty message → CLI emits {} object; parse robustly.
+      const stdoutBuf = Buffer.concat(stdoutChunks);
+      const stderrBuf = Buffer.concat(stderrChunks);
+      // Debug: report first 16 bytes hex so we can see if child emitted GBK or UTF-8.
+      const first16 = stdoutBuf.slice(0, 16).toString('hex');
+      // Try UTF-8 first; if it produces a replacement char, fall back to GBK.
+      let stdout = stdoutBuf.toString('utf-8');
+      if (stdout.includes('\uFFFD')) {
+        try {
+          // Use Node's built-in TextDecoder for GBK fallback (iconv-lite isn't
+          // a dep — Node's TextDecoder supports 'gbk' on modern versions).
+          stdout = new TextDecoder('gbk').decode(stdoutBuf);
+        } catch {
+          // Last resort: keep utf-8 with replacement chars.
+        }
+      }
+      const stderr = stderrBuf.toString('utf-8');
       const trimmed = stdout.trim();
       if (!trimmed) {
         reject(new Error(`lintany chat exited ${code} with no stdout. stderr=${stderr.slice(0, 200)}`));
@@ -70,7 +133,8 @@ function callLintanyChat(message: string): Promise<AiAdapterReply> {
         const parsed = JSON.parse(trimmed);
         resolve(parsed as AiAdapterReply);
       } catch {
-        reject(new Error(`lintany chat emitted non-JSON: ${trimmed.slice(0, 200)}`));
+        // Debug: include first16 hex to diagnose GBK/UTF-8 mismatch.
+        reject(new Error(`lintany chat emitted non-JSON: first16=${first16} body=${trimmed.slice(0, 200)}`));
       }
     });
   });
@@ -156,6 +220,7 @@ export async function POST(req: Request) {
   if (!message) return NextResponse.json({ error: 'Empty message' }, { status: 400 });
 
   // Try the real LLM first.
+  let llmError: string | null = null;
   try {
     const ai = await callLintanyChat(message);
     const catalog = await loadCatalog();
@@ -167,11 +232,17 @@ export async function POST(req: Request) {
       adapter: ai.adapter,
     });
   } catch (e) {
+    // LLM path failed — fall through to keyword fallback below.
+    llmError = (e as Error).message;
+    // Debug: include hex prefix so we can see if child emitted GBK or UTF-8.
+    llmError += ` [stdout-first16-hex=${(e as Error).message.match(/first16=([0-9a-f]+)/)?.[1] ?? 'n/a'}]`;
     // eslint-disable-next-line no-console
-    console.warn(`[chat] LLM path failed: ${(e as Error).message}`);
+    console.warn(`[chat] LLM path failed: ${llmError}`);
   }
 
   // Fallback: keyword dict (legacy path).
+  // Note: we surface the LLM error in `llmError` field so the UI can
+  // show "set MINIMAX_API_KEY to enable real LLM" hints.
   const messageLower = message.toLowerCase();
   const match = FALLBACK_KEYWORDS.find((g) => g.keys.some((k) => messageLower.includes(k.toLowerCase())))
     ?? { keys: [], ruleIds: [], setIds: [], reply: 'Tell me about the kind of checks you want (security, TypeScript, formatting, tests, …) and I will recommend a preset.' };
@@ -187,6 +258,7 @@ export async function POST(req: Request) {
     recommendedSets,
     matches: match.keys,
     adapter: 'fallback-keyword',
+    llmError,
   });
 }
 

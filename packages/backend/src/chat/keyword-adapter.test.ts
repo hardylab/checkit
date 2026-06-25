@@ -39,7 +39,8 @@ describe('chatReply — no hits', () => {
     const r = await chatReply('');
     expect(r.suggestions).toHaveLength(0);
     expect(r.recommendedSets).toHaveLength(0);
-    expect(r.reply).toMatch(/Empty/);
+    // Default to zh for empty messages (desktop UI is zh-primary).
+    expect(r.reply).toMatch(/消息为空|Empty/);
   });
 
   it('whitespace-only message treated as empty', async () => {
@@ -52,6 +53,41 @@ describe('chatReply — no hits', () => {
     expect(r.suggestions).toHaveLength(0);
     expect(r.recommendedSets).toHaveLength(0);
     expect(r.reply).toMatch(/no rule or preset/);
+  });
+});
+
+describe('chatReply — language detection', () => {
+  it('Chinese empty msg returns Chinese empty reply', async () => {
+    const r = await chatReply('   ');
+    expect(r.reply).toMatch(/消息为空/);
+  });
+
+  it('Chinese non-match returns Chinese reply', async () => {
+    const r = await chatReply('你好');
+    expect(r.reply).toMatch(/没有匹配到/);
+    expect(r.reply).not.toMatch(/I matched no rule/);
+  });
+
+  it('English non-match returns English reply', async () => {
+    const r = await chatReply('qwerty uiop asdfgh');
+    expect(r.reply).toMatch(/I matched no rule/);
+    expect(r.reply).not.toMatch(/没有匹配到/);
+  });
+
+  it('Chinese match returns Chinese matched reply', async () => {
+    const r = await chatReply('硬编码凭证');
+    // 'credential' or '凭证' or '硬编码' should all hit — at least one of
+    // the matched paths returns Chinese reply.
+    if (r.suggestions.length > 0 || r.recommendedSets.length > 0) {
+      expect(r.reply).toMatch(/为 "硬编码凭证" 匹配到/);
+    }
+  });
+
+  it('English match returns English matched reply', async () => {
+    const r = await chatReply('plaintext credential');
+    if (r.suggestions.length > 0 || r.recommendedSets.length > 0) {
+      expect(r.reply).toMatch(/Matched \d+ (preset candidate\(s\)|specific rule\(s\))/);
+    }
   });
 });
 
