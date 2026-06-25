@@ -112,7 +112,7 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
     setSaving(true);
     setError(null);
     try {
-      const writes: Array<{ key: string; value: string }> = [];
+      const sets: Array<{ key: string; value: string }> = [];
       const deletes: string[] = [];
 
       // Compare against what we'd reset to (provider default) to detect
@@ -127,67 +127,53 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
         ? (customProviderName.trim() || 'custom')
         : provider;
 
-      writes.push({ key: 'ai.adapter', value: adapterValue });
+      sets.push({ key: 'ai.adapter', value: adapterValue });
 
       // Model: if user provided custom, set; if matches preset default, leave as-is.
-      if (model) writes.push({ key: 'ai.model', value: model });
+      if (model) sets.push({ key: 'ai.model', value: model });
       else deletes.push('ai.model');
 
       // BaseUrl: if user provided, set; if matches preset default, leave as-is.
       if (baseUrl && baseUrl !== (preset?.defaultBaseUrl || '')) {
-        writes.push({ key: 'ai.base_url', value: baseUrl });
+        sets.push({ key: 'ai.base_url', value: baseUrl });
       } else if (baseUrl === (preset?.defaultBaseUrl || '')) {
         // Empty means "use default" — explicitly unset to keep config clean.
         deletes.push('ai.base_url');
       }
 
       // API key: always write if non-empty (no preset default).
-      if (apiKey) writes.push({ key: 'ai.api_key', value: apiKey });
+      if (apiKey) sets.push({ key: 'ai.api_key', value: apiKey });
       else deletes.push('ai.api_key');
 
-      // Whether any of the writes/deletes touches a key that needs LLM
-      // verification (adapter / api_key / base_url).
+      // Whether any of the sets/deletes touches a key that needs LLM
+      // verification (adapter / api_key / base_url). We send the whole
+      // batch in one request with withTest:true so the server writes
+      // ALL keys first, then runs the test exactly once. This avoids the
+      // "wrote ai.adapter but no api_key yet → test fails immediately"
+      // ordering bug.
       const NEEDS_TEST_KEYS = new Set(['ai.adapter', 'ai.api_key', 'ai.base_url']);
       const needsTest =
-        writes.some((w) => NEEDS_TEST_KEYS.has(w.key)) ||
+        sets.some((s) => NEEDS_TEST_KEYS.has(s.key)) ||
         deletes.some((k) => NEEDS_TEST_KEYS.has(k));
 
-      // POST each write. Keep simple — fire sequentially.
-      for (const w of writes) {
-        const body: { key: string; value: string; withTest?: boolean } = { key: w.key, value: w.value };
-        if (needsTest && NEEDS_TEST_KEYS.has(w.key)) {
-          body.withTest = true;
-        }
-        const r = await fetch('/api/config', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        const j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
-        if (!r.ok) {
-          throw new Error(`set ${w.key}: ${j.error || r.statusText}`);
-        }
-        if (body.withTest && j.rolledBack) {
-          throw new Error(`set ${w.key} rolled back: ${j.error}`);
-        }
-        if (body.withTest) {
-          // Test passed — show "verified" hint in the success banner.
-          setVerifiedAdapter(j.adapter ?? 'unknown');
-          setSavedAt(Date.now());
-        }
+      const r = await fetch('/api/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          batch: { sets, deletes, withTest: needsTest },
+        }),
+      });
+      const j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+      if (!r.ok) {
+        throw new Error(j.error || r.statusText);
       }
-      for (const k of deletes) {
-        const r = await fetch('/api/config', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ deletes: [k] }),
-        });
-        if (!r.ok) {
-          const j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
-          throw new Error(`unset ${k}: ${j.error || r.statusText}`);
-        }
+      if (j.rolledBack) {
+        throw new Error(`保存后验证失败: ${j.error || 'unknown'}`);
       }
-      if (!savedAt) setSavedAt(Date.now());
+      if (needsTest) {
+        setVerifiedAdapter(j.adapter ?? 'unknown');
+      }
+      setSavedAt(Date.now());
     } catch (e) {
       setError((e as Error).message);
     } finally {

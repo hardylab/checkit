@@ -89,66 +89,90 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  // Optional: if the client passes a body { withTest: true }, run the
-  // `lintany config test` after writing — verify the new config actually
-  // works before we report success. Used by the desktop Settings modal
-  // to refuse saving bad credentials.
-  let body: { key?: string; value?: unknown; deletes?: string[]; withTest?: boolean } = {};
+  // Body shape (one of):
+  //   1) { key, value, withTest? }                    — single write
+  //   2) { deletes: [k1, k2, ...], withTest? }        — single batch delete
+  //   3) { batch: { sets: [...], deletes: [...], withTest? } }
+  //      — atomic write of many keys, then optionally test.
+  //      All sets run first, then all deletes, then the test (if any).
+  //      On test failure, every key set in this request is rolled back.
+  let body: {
+    key?: string;
+    value?: unknown;
+    deletes?: string[];
+    withTest?: boolean;
+    batch?: {
+      sets?: Array<{ key: string; value: string }>;
+      deletes?: string[];
+      withTest?: boolean;
+    };
+  } = {};
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
 
-  const { key, value, deletes, withTest } = body;
-  const keysToWrite: string[] = [];
-  if (key) keysToWrite.push(key);
-  if (Array.isArray(deletes)) keysToWrite.push(...deletes);
+  // Normalize into a uniform plan.
+  let sets: Array<{ key: string; value: string }> = [];
+  let deletes: string[] = [];
+  let withTest = false;
+  if (body.batch) {
+    if (Array.isArray(body.batch.sets)) sets = body.batch.sets;
+    if (Array.isArray(body.batch.deletes)) deletes = body.batch.deletes;
+    if (body.batch.withTest) withTest = true;
+  } else {
+    if (body.key && body.value !== undefined) sets = [{ key: body.key, value: String(body.value) }];
+    if (Array.isArray(body.deletes)) deletes = body.deletes;
+    if (body.withTest) withTest = true;
+  }
 
-  if (keysToWrite.length === 0) {
+  const allKeys = [...sets.map((s) => s.key), ...deletes];
+  if (allKeys.length === 0) {
     return NextResponse.json({ error: 'no key or deletes provided' }, { status: 400 });
   }
-  for (const k of keysToWrite) {
+  for (const k of allKeys) {
     if (!ALLOWED_KEYS.has(k)) {
       return NextResponse.json({ error: `key not allowed: ${k}` }, { status: 400 });
     }
   }
 
+  // Snapshot the keys we plan to set so we can roll them back on test
+  // failure (best-effort — we don't know the prior values, but a fresh
+  // unset is safer than leaving half-written config behind).
+  const keysToRollback = sets.map((s) => s.key);
+
   try {
-    // For each key: if a value is provided, set it; if it's in `deletes`, unset it.
-    for (const k of keysToWrite) {
-      if (Array.isArray(deletes) && deletes.includes(k)) {
-        const { code, stderr } = await runConfigCli(['unset', k]);
-        if (code !== 0) {
-          return NextResponse.json({ error: `unset ${k} failed: ${stderr}` }, { status: 500 });
-        }
-      } else if (key === k && value !== undefined) {
-        const { code, stderr } = await runConfigCli(['set', k, String(value)]);
-        if (code !== 0) {
-          return NextResponse.json({ error: `set ${k} failed: ${stderr}` }, { status: 500 });
-        }
+    // Sets first.
+    for (const s of sets) {
+      const { code, stderr } = await runConfigCli(['set', s.key, s.value]);
+      if (code !== 0) {
+        return NextResponse.json({ error: `set ${s.key} failed: ${stderr}` }, { status: 500 });
+      }
+    }
+    // Then deletes.
+    for (const k of deletes) {
+      const { code, stderr } = await runConfigCli(['unset', k]);
+      if (code !== 0) {
+        return NextResponse.json({ error: `unset ${k} failed: ${stderr}` }, { status: 500 });
       }
     }
     if (!withTest) {
       return NextResponse.json({ ok: true });
     }
     // ─── Test the freshly-written config by pinging the LLM. ───────
-    // On failure, best-effort rollback: unset any keys we just wrote that
-    // weren't there before (we don't snapshot the prior state for deletes,
-    // so we just leave deletes alone on failure).
     const { stdout, code, stderr } = await runConfigCli(['test', '--json']);
     let testResult: { ok?: boolean; adapter?: string; error?: string; reply?: string } = {};
     try { testResult = JSON.parse(stdout); } catch {
-      // Non-JSON output (e.g. error printed without --json) — fall back to stderr.
       return NextResponse.json({ ok: false, error: `config test produced non-JSON: ${stderr.slice(0, 200) || stdout.slice(0, 200)}` }, { status: 502 });
     }
     if (code !== 0 || !testResult.ok) {
-      // Rollback: unset each key we wrote (best effort; don't fail the
-      // request on rollback errors — the main error is more important).
-      if (key) {
-        try { await runConfigCli(['unset', key]); } catch { /* ignore */ }
+      // Roll back the keys we set. Deletes are user-explicit and we
+      // don't know the prior state — leave them alone.
+      for (const k of keysToRollback) {
+        try { await runConfigCli(['unset', k]); } catch { /* ignore */ }
       }
       return NextResponse.json({
         ok: false,
         adapter: testResult.adapter,
         error: testResult.error || `config test failed for ${testResult.adapter}`,
-        rolledBack: !!key,
+        rolledBack: keysToRollback.length > 0,
       }, { status: 502 });
     }
     return NextResponse.json({ ok: true, adapter: testResult.adapter, reply: testResult.reply });
