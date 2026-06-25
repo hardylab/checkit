@@ -117,18 +117,33 @@ interface AiAdapter {
 - **OllamaAdapter** — 本地 llama3 / qwen2.5-coder
 - **OpenCodeAdapter** — 已有,接入 `--ai-fix` 路径
 
-**用户配置**:
-- `<brand> config set ai.adapter openai`
-- `<brand> config set ai.api_key sk-xxx`(或 env var `LINTANY_AI_KEY`)
+**用户配置**(三层,按优先级):
+1. `--adapter <id>` flag(显式) — `lintany chat --adapter minimax "..."`
+2. `lintany config set ai.adapter <id>`
+3. **env var 自动提升**(key 在就有 provider):
+   - `MINIMAX_API_KEY` → 自动选 `minimax`(推荐)
+   - `OPENAI_API_KEY` → 自动选 `openai`
+   - `ANTHROPIC_API_KEY` → 自动选 `claude`
+   - 全无 → fallback 到 `local-keyword`(offline,keyword 匹配,回复模板化)
+
+**为什么默认是 local-keyword**:让没 key 的用户也能用(关键词命中 → rule/preset 推荐),
+但 user **预期真 LLM 答案**时需要设 env var 或 `config set ai.adapter`。
+**完整环境变量清单见仓根 `.env.example`**。
+
+模型 / baseUrl 覆盖:
 - `<brand> config set ai.model gpt-4o-mini`
+- `OPENAI_BASE_URL=https://your-proxy.example.com/v1`(Azure/Together/OpenRouter 兼容)
+
+**关键提醒**:`lintany chat` 不带 adapter 时,reply 看起来"模板"是 **local-keyword** 的有意设计,
+不是 bug。要真 LLM 回复,设 env var 或 `--adapter <id>`。
 
 ### C2. 密钥存储(三层 fallback)
-1. **OS keyring**(优先):Windows Credential Manager / macOS Keychain / Linux Secret Service
-   - 用 `keytar` 或 `node-keytar`
-2. **env var**:`CHECKIT_<PROVIDER>_KEY`
-3. **加密文件**:`~/.checkit/secrets.json`(用机器 ID 派生密钥,AES-GCM)
+1. **env var**(当前实现,MSP 实际状态):`MINIMAX_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`
+2. **OS keyring**(后续):Windows Credential Manager / macOS Keychain / Linux Secret Service
+   - 用 `keytar` 或 `node-keytar`(Phase 2 收尾)
+3. **加密文件**(后续):`~/.checkit/secrets.json`(用机器 ID 派生密钥,AES-GCM)
 
-**不**写明文到 `config.json`(除了 keyring reference)
+**当前**:直读 env var,**不**写明文到 `config.json`。`ai.api_key` 配置项仅作测试 / 显式 override。
 
 ### C3. 离线契约
 - `/api/scan` 不可达时(CLI 没装 / network down):
