@@ -4,6 +4,11 @@
 // Settings persist to ~/.checkit/config.json (via POST /api/config).
 // The same config is read by the CLI, so this is THE single source of truth
 // for LLM credentials across both desktop and CLI.
+//
+// "Custom" mode: the user types the provider's name (deepseek, doubao,
+// moonshot, etc.). We store the canonical preset id ("custom") in
+// `ai.adapter` and the human name in `ai.custom_provider_name`. This keeps
+// the dropdown selectable across reloads.
 
 import React, { useEffect, useState } from 'react';
 
@@ -13,13 +18,12 @@ interface ConfigResponse {
   error?: string;
 }
 
-const PROVIDER_PRESETS: Record<string, { defaultBaseUrl: string; defaultModel: string }> = {
+const BUILTIN_PRESETS: Record<string, { defaultBaseUrl: string; defaultModel: string }> = {
   'local-keyword': { defaultBaseUrl: '', defaultModel: '(no LLM)' },
   openai:         { defaultBaseUrl: 'https://api.openai.com/v1', defaultModel: 'gpt-4o-mini' },
   claude:         { defaultBaseUrl: 'https://api.anthropic.com', defaultModel: 'claude-sonnet-4-5' },
   minimax:        { defaultBaseUrl: 'https://api.minimaxi.com/v1', defaultModel: 'MiniMax-M3' },
   ollama:         { defaultBaseUrl: 'http://localhost:11434/v1', defaultModel: 'llama3' },
-  custom:         { defaultBaseUrl: '', defaultModel: '' },
 };
 
 const PROVIDER_OPTIONS = [
@@ -51,12 +55,38 @@ const SaveIcon = () => (
   </svg>
 );
 
+/** Resolves the form state from a raw config. Handles both the new shape
+ * (ai.adapter='custom' + ai.custom_provider_name='deepseek') and the
+ * legacy shape (ai.adapter='deepseek' directly, no custom_provider_name).
+ * If the stored adapter isn't a known preset, we treat it as 'custom'
+ * and surface the adapter id itself as the custom provider name.
+ */
+function resolveFormState(cfg: Record<string, string>): {
+  provider: string;
+  customProviderName: string;
+  isLegacyCustom: boolean;
+} {
+  const adapter = cfg['ai.adapter'] || 'local-keyword';
+  const customName = cfg['ai.custom_provider_name'] || '';
+  if (BUILTIN_PRESETS[adapter]) {
+    return { provider: adapter, customProviderName: '', isLegacyCustom: false };
+  }
+  if (adapter === 'custom') {
+    return { provider: 'custom', customProviderName: customName, isLegacyCustom: false };
+  }
+  // Legacy / user-typed-in-custom-field shape: e.g. ai.adapter = 'deepseek'
+  // with no separate custom_provider_name. Show as custom + the adapter
+  // value as the displayed name.
+  return { provider: 'custom', customProviderName: adapter, isLegacyCustom: true };
+}
+
 export function SettingsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [verifiedAdapter, setVerifiedAdapter] = useState<string | null>(null);
+  const [legacyCustomBanner, setLegacyCustomBanner] = useState<boolean>(false);
 
   // Form state
   const [provider, setProvider] = useState<string>('local-keyword');
@@ -73,26 +103,26 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
     setLoading(true);
     setError(null);
     setSavedAt(null);
+    setVerifiedAdapter(null);
+    setLegacyCustomBanner(false);
     fetch('/api/config', { cache: 'no-store' })
       .then((r) => r.json() as Promise<ConfigResponse>)
       .then((data) => {
         if (data.error) throw new Error(data.error);
         const cfg = data.config || {};
         setConfigFile(data.file || '');
-        const adapter = cfg['ai.adapter'] || 'local-keyword';
-        setProvider(adapter);
-        // Auto-fill model + baseUrl from preset if user hasn't customized.
-        const preset = PROVIDER_PRESETS[adapter];
+
+        const resolved = resolveFormState(cfg);
+        setProvider(resolved.provider);
+        setCustomProviderName(resolved.customProviderName);
+        if (resolved.isLegacyCustom) {
+          setLegacyCustomBanner(true);
+        }
+
+        const preset = BUILTIN_PRESETS[resolved.provider] || (resolved.provider === 'custom' ? { defaultBaseUrl: '', defaultModel: '' } : null);
         setModel(cfg['ai.model'] || preset?.defaultModel || '');
         setBaseUrl(cfg['ai.base_url'] || preset?.defaultBaseUrl || '');
         setApiKey(cfg['ai.api_key'] || '');
-        // The "custom provider name" is just the adapter itself for the
-        // custom adapter; the user can edit it inline.
-        if (adapter === 'custom') {
-          setCustomProviderName(cfg['ai.adapter'] || '');
-        } else {
-          setCustomProviderName('');
-        }
       })
       .catch((e) => setError(e.message || 'failed to load config'))
       .finally(() => setLoading(false));
@@ -101,7 +131,7 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
   // When provider changes, suggest model + baseUrl (only if blank).
   function onProviderChange(next: string) {
     setProvider(next);
-    const preset = PROVIDER_PRESETS[next];
+    const preset = BUILTIN_PRESETS[next];
     if (preset) {
       if (!model) setModel(preset.defaultModel);
       if (!baseUrl) setBaseUrl(preset.defaultBaseUrl);
@@ -111,46 +141,46 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
   async function save() {
     setSaving(true);
     setError(null);
+    setSavedAt(null);
+    setVerifiedAdapter(null);
     try {
       const sets: Array<{ key: string; value: string }> = [];
       const deletes: string[] = [];
 
-      // Compare against what we'd reset to (provider default) to detect
-      // "user cleared this back to default" → unset.
-      const preset = PROVIDER_PRESETS[provider];
-      const isCustom = provider === 'custom';
+      // We always write ai.adapter = canonical id.
+      // - Built-in: ai.adapter = "openai" / "claude" / etc.
+      // - Custom:    ai.adapter = "custom"  +  ai.custom_provider_name = "<user-typed>"
+      // (this keeps the dropdown selectable on reload; previously we
+      // wrote the user-typed name into ai.adapter, which made the
+      // dropdown fall back to "Local keyword" on reload.)
+      sets.push({ key: 'ai.adapter', value: provider });
 
-      // Determine the actual adapter value to write. For "custom" the
-      // user types the provider name; we use that as both the adapter id
-      // and the human-readable label.
-      const adapterValue = isCustom
-        ? (customProviderName.trim() || 'custom')
-        : provider;
+      if (provider === 'custom') {
+        const trimmed = customProviderName.trim();
+        if (trimmed) sets.push({ key: 'ai.custom_provider_name', value: trimmed });
+        else deletes.push('ai.custom_provider_name');
+      } else {
+        // Switching away from custom — clear the leftover name.
+        deletes.push('ai.custom_provider_name');
+      }
 
-      sets.push({ key: 'ai.adapter', value: adapterValue });
-
-      // Model: if user provided custom, set; if matches preset default, leave as-is.
+      // Model: write if user provided; if matches preset default, leave as-is.
       if (model) sets.push({ key: 'ai.model', value: model });
       else deletes.push('ai.model');
 
       // BaseUrl: if user provided, set; if matches preset default, leave as-is.
+      const preset = BUILTIN_PRESETS[provider] || (provider === 'custom' ? { defaultBaseUrl: '' } : null);
       if (baseUrl && baseUrl !== (preset?.defaultBaseUrl || '')) {
         sets.push({ key: 'ai.base_url', value: baseUrl });
       } else if (baseUrl === (preset?.defaultBaseUrl || '')) {
-        // Empty means "use default" — explicitly unset to keep config clean.
         deletes.push('ai.base_url');
       }
 
-      // API key: always write if non-empty (no preset default).
+      // API key: always write if non-empty.
       if (apiKey) sets.push({ key: 'ai.api_key', value: apiKey });
       else deletes.push('ai.api_key');
 
-      // Whether any of the sets/deletes touches a key that needs LLM
-      // verification (adapter / api_key / base_url). We send the whole
-      // batch in one request with withTest:true so the server writes
-      // ALL keys first, then runs the test exactly once. This avoids the
-      // "wrote ai.adapter but no api_key yet → test fails immediately"
-      // ordering bug.
+      // Test if any LLM-affecting key is being written/deleted.
       const NEEDS_TEST_KEYS = new Set(['ai.adapter', 'ai.api_key', 'ai.base_url']);
       const needsTest =
         sets.some((s) => NEEDS_TEST_KEYS.has(s.key)) ||
@@ -159,9 +189,7 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
       const r = await fetch('/api/config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          batch: { sets, deletes, withTest: needsTest },
-        }),
+        body: JSON.stringify({ batch: { sets, deletes, withTest: needsTest } }),
       });
       const j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
       if (!r.ok) {
@@ -174,6 +202,10 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
         setVerifiedAdapter(j.adapter ?? 'unknown');
       }
       setSavedAt(Date.now());
+      // The legacy "ai.adapter = deepseek" → "ai.adapter = custom" migration
+      // has effectively run on this save (since we wrote 'custom'). Clear
+      // the banner so the user knows they're now on the canonical shape.
+      setLegacyCustomBanner(false);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -189,7 +221,12 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
       const r = await fetch('/api/config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deletes: ['ai.adapter', 'ai.model', 'ai.api_key', 'ai.base_url'] }),
+        body: JSON.stringify({
+          deletes: [
+            'ai.adapter', 'ai.model', 'ai.api_key', 'ai.base_url',
+            'ai.custom_provider_name',
+          ],
+        }),
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       setProvider('local-keyword');
@@ -197,6 +234,7 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
       setModel('');
       setBaseUrl('');
       setApiKey('');
+      setLegacyCustomBanner(false);
       setSavedAt(Date.now());
     } catch (e) {
       setError((e as Error).message);
@@ -207,7 +245,7 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
 
   if (!open) return null;
 
-  const presetForProvider = PROVIDER_PRESETS[provider];
+  const presetForProvider = BUILTIN_PRESETS[provider];
   const isCustom = provider === 'custom';
 
   return (
@@ -240,6 +278,9 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
                 {PROVIDER_OPTIONS.map((p) => (
                   <option key={p.id} value={p.id}>{p.label}</option>
                 ))}
+                {isCustom && customProviderName && !BUILTIN_PRESETS[customProviderName] && (
+                  <option value="custom">↳ {customProviderName} (你定义的)</option>
+                )}
               </select>
             </label>
 
@@ -256,10 +297,15 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
                   spellCheck={false}
                 />
                 <span className="settings-hint">
-                  这个名字会作为 adapter id 写入 config (例:<code>ai.adapter = doubao</code>)。
-                  选用 OpenAI-compatible 接口的供应商直接用 <code>https://&lt;host&gt;/v1</code> 风格的 Base URL 即可。
+                  名字会存到 <code>ai.custom_provider_name</code>。Base URL 是真正决定行为的地方(OpenAI-compatible 协议)。
                 </span>
               </label>
+            )}
+
+            {legacyCustomBanner && (
+              <p className="settings-info">
+                ⚠ 检测到旧格式 config(供应商名直接写在 <code>ai.adapter</code>)。点保存后会迁移到新格式(<code>ai.adapter = "custom"</code> + 供应商名分到 <code>ai.custom_provider_name</code>)。
+              </p>
             )}
 
             <label className="settings-field">

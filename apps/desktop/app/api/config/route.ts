@@ -49,7 +49,7 @@ function runConfigCli(args: string[]): Promise<{ stdout: string; stderr: string;
   });
 }
 
-const ALLOWED_KEYS = new Set(['ai.adapter', 'ai.model', 'ai.api_key', 'ai.base_url', 'theme', 'locale']);
+const ALLOWED_KEYS = new Set(['ai.adapter', 'ai.model', 'ai.api_key', 'ai.base_url', 'ai.custom_provider_name', 'theme', 'locale']);
 
 export async function GET() {
   try {
