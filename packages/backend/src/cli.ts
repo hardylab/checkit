@@ -29,6 +29,7 @@ import { loadFullConfig, type ResolvedRuleEntry } from './config';
 import { PRESET_COMMANDS, type PresetCommandName } from './preset';
 import { CONFIG_COMMANDS, type ConfigCommandName } from './config/commands';
 import { CUSTOM_PROVIDER_COMMANDS, type CustomProviderCommandName } from './custom-provider/commands';
+import { WORKSPACE_COMMANDS } from './workspace/commands';
 import { cmdChat } from './chat';
 import { cmdDoctor } from './doctor';
 import { runUpload } from './scan/upload';
@@ -217,6 +218,7 @@ export async function runCLI(options?: CLIOptions) {
     preset: PRESET_COMMANDS as unknown as Record<string, (args: string[], cwd: string) => void | Promise<void>>,
     config: CONFIG_COMMANDS as unknown as Record<string, (args: string[], cwd: string) => void | Promise<void>>,
     'custom-provider': CUSTOM_PROVIDER_COMMANDS as unknown as Record<string, (args: string[], cwd: string) => void | Promise<void>>,
+    workspace: WORKSPACE_COMMANDS as unknown as Record<string, (args: string[], cwd: string) => void | Promise<void>>,
     chat: null, // async, special-cased below
     doctor: { '': (a, cwd) => cmdDoctor(a, cwd) } as unknown as Record<string, (args: string[], cwd: string) => void | Promise<void>>, // doctor has no subcommand
   };
