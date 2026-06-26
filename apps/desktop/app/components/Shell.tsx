@@ -13,18 +13,24 @@ const ICON_GRID      = <Icon><rect x="3" y="3" width="7" height="7" rx="1"/><rec
 const ICON_CHAT      = <Icon><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></Icon>;
 const ICON_SETTINGS  = <Icon><path d="M4 6h16M4 12h16M4 18h10"/></Icon>;
 const ICON_SUN       = <Icon><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></Icon>;
+const ICON_PRESET    = <Icon><path d="M4 6h16v4H4zM4 14h10v6H4zM16 14h4v6h-4z"/></Icon>;
+const ICON_WORKSPACE = <Icon><path d="M3 7h18v10H3zM3 7l9-4 9 4M7 11h2v2H7zM11 11h2v2h-2zM15 11h2v2h-2z"/></Icon>;
 
 const ICON_BY_TAB: Record<string, React.ReactNode> = {
   dashboard: ICON_DASHBOARD,
   rules: ICON_GRID,
+  presets: ICON_PRESET,
+  workspaces: ICON_WORKSPACE,
   chat: ICON_CHAT,
 };
 
 // Maps a view id to which rail tab should be highlighted.
 // `rule-detail` and `ai-fix` are sub-views of their parent tab.
-function parentTabId(id: ViewId): 'dashboard' | 'rules' | 'chat' {
+function parentTabId(id: ViewId): 'dashboard' | 'rules' | 'presets' | 'workspaces' | 'chat' {
   if (id === 'rules' || id === 'rule-detail') return 'rules';
   if (id === 'chat') return 'chat';
+  if (id === 'presets') return 'presets';
+  if (id === 'workspaces') return 'workspaces';
   return 'dashboard';
 }
 

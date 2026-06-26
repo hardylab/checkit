@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { Shell } from '../components/Shell';
 import { fetchRules, fetchRuleBody, type RuleDoc } from '../lib/api';
 import { useColumnLayout } from '../lib/use-column-layout';
@@ -307,6 +307,15 @@ export function RulesView({ navigate }: { navigate: NavigateFn }) {
         </aside>
 
         <main className="rules-market-main">
+          <BulkAddToPresetsBar
+            disabled={!activeCat || setsInActiveCat.length === 0}
+            allRulesInActiveCat={(() => {
+              const ids = new Set<string>();
+              for (const s of setsInActiveCat) for (const id of s.ruleIds) ids.add(id);
+              return Array.from(ids);
+            })()}
+            onAdded={() => setHydrated(false)}
+          />
           {!activeCat || setsInActiveCat.length === 0 ? (
             <div className="rules-empty">
               <div className="rules-empty-icon" aria-hidden>
@@ -405,34 +414,22 @@ export function RulesView({ navigate }: { navigate: NavigateFn }) {
                       </p>
                     </header>
                     <ul className="rules-rule-list" role="list">
-                      {selectedSetRules.map((r) => {
-                        const on = configs[r.id]?.enabled !== false;
-                        return (
-                          <li
-                            key={r.id}
-                            className="rules-rule-row"
-                            onClick={() => openRule(r, selectedSet)}
-                            data-rule-id={r.id}
-                            data-rule-row
-                          >
-                            <span className={`rules-rule-sev sev-${r.severity}`} title={SEVERITY_LABEL[r.severity]} />
-                            <div className="rules-rule-body">
-                              <div className="rules-rule-name">{r.title}</div>
-                              <div className="rules-rule-desc">{r.tldr}</div>
-                            </div>
-                            <button
-                              type="button"
-                              className={`rules-rule-toggle ${on ? 'on' : ''}`}
-                              aria-pressed={on}
-                              aria-label={`切换 ${r.title}`}
-                              onClick={(e) => { e.stopPropagation(); toggleRule(r.id, selectedSet.id, !on); }}
-                              data-testid={`rule-toggle-${r.id}`}
-                            >
-                              <span className="rules-rule-toggle-knob" />
-                            </button>
-                          </li>
-                        );
-                      })}
+                      {selectedSetRules.map((r) => (
+                        <li
+                          key={r.id}
+                          className="rules-rule-row"
+                          onClick={() => openRule(r, selectedSet)}
+                          data-rule-id={r.id}
+                          data-rule-row
+                        >
+                          <span className={`rules-rule-sev sev-${r.severity}`} title={SEVERITY_LABEL[r.severity]} />
+                          <div className="rules-rule-body">
+                            <div className="rules-rule-name">{r.title}</div>
+                            <div className="rules-rule-desc">{r.tldr}</div>
+                          </div>
+                          <RuleAddToPresets rule={r} onAdded={() => setHydrated(false)} />
+                        </li>
+                      ))}
                     </ul>
                   </>
                 )}
@@ -543,5 +540,278 @@ function AddGlob({ onAdd }: { onAdd: (g: string) => void }) {
       />
       <button type="submit" className="btn btn-ghost">+</button>
     </form>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────
+// "添加到 Preset" dropdown — replaces the old per-rule Switch toggle.
+// User picks one or more user-created presets; the rule is added to each.
+// PATCH /api/presets/[id] { addRules: [ruleId] }.
+// ─────────────────────────────────────────────────────────────────
+interface PresetLite { id: string; name: string; scope: 'project' | 'global' }
+
+function usePresetsList(): { presets: PresetLite[]; loading: boolean; reload: () => void } {
+  const [presets, setPresets] = useState<PresetLite[]>([]);
+  const [loading, setLoading] = useState(false);
+  const reload = useCallback(() => {
+    setLoading(true);
+    fetch('/api/presets', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((j: { presets?: PresetLite[] }) => {
+        setPresets(j.presets ?? []);
+      })
+      .catch(() => setPresets([]))
+      .finally(() => setLoading(false));
+  }, []);
+  useEffect(() => { reload(); }, [reload]);
+  return { presets, loading, reload };
+}
+
+function RuleAddToPresets({ rule, onAdded }: { rule: { id: string; title: string }; onAdded?: () => void }) {
+  const { presets, loading, reload } = usePresetsList();
+  const [open, setOpen] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<null | 'ok' | 'err'>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [open]);
+
+  function togglePick(id: string) {
+    setPicked((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  async function commit() {
+    if (picked.size === 0) return;
+    setSaving(true);
+    setStatus(null);
+    try {
+      for (const id of picked) {
+        const r = await fetch(`/api/presets/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ addRules: [rule.id] }),
+        });
+        if (!r.ok) {
+          const j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+          throw new Error(j.error || r.statusText);
+        }
+      }
+      setStatus('ok');
+      setPicked(new Set());
+      setOpen(false);
+      reload();
+      onAdded?.();
+    } catch {
+      setStatus('err');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading && presets.length === 0) {
+    return <span className="rule-add-to-presets" />;
+  }
+
+  return (
+    <div
+      className="rule-add-to-presets"
+      ref={wrapRef}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        type="button"
+        className="rule-add-to-presets-trigger"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        data-testid={`add-to-preset-${rule.id}`}
+        title="添加到 Preset"
+      >
+        {status === 'ok' ? '✓ 已添加' : '+ 添加到'}
+      </button>
+      {open && (
+        <div className="rule-add-to-presets-menu" role="listbox">
+          {presets.length === 0 ? (
+            <p className="rule-add-to-presets-empty">还没有 Preset。切到 Preset tab 新建一个。</p>
+          ) : (
+            <>
+              <ul className="rule-add-to-presets-list">
+                {presets.map((p) => (
+                  <li key={`${p.scope}:${p.id}`}>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={picked.has(p.id)}
+                        onChange={() => togglePick(p.id)}
+                      />
+                      <span className="rule-add-to-presets-name">{p.name}</span>
+                      <span className="rule-add-to-presets-scope">{p.scope}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+              <div className="rule-add-to-presets-foot">
+                <button type="button" className="btn btn-ghost" onClick={() => setOpen(false)} disabled={saving}>取消</button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={commit}
+                  disabled={saving || picked.size === 0}
+                  data-testid={`add-to-preset-confirm-${rule.id}`}
+                >
+                  {saving ? '保存中…' : `添加到 ${picked.size} 个 Preset`}
+                </button>
+              </div>
+            </>
+          )}
+          {status === 'err' && <p className="rule-add-to-presets-error">⚠ 保存失败,重试</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Bulk "一键添加到" bar at the top of the rules list.
+// User picks presets; we add ALL rules in the currently-active category
+// to each picked preset in one shot.
+// ─────────────────────────────────────────────────────────────────
+function BulkAddToPresetsBar({
+  disabled,
+  allRulesInActiveCat,
+  onAdded,
+}: {
+  disabled: boolean;
+  allRulesInActiveCat: string[];
+  onAdded?: () => void;
+}) {
+  const { presets, loading } = usePresetsList();
+  const [open, setOpen] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<null | 'ok' | 'err'>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [open]);
+
+  function togglePick(id: string) {
+    setPicked((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  async function commit() {
+    if (picked.size === 0 || allRulesInActiveCat.length === 0) return;
+    setSaving(true);
+    setStatus(null);
+    try {
+      for (const id of picked) {
+        const r = await fetch(`/api/presets/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ addRules: allRulesInActiveCat }),
+        });
+        if (!r.ok) {
+          const j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+          throw new Error(j.error || r.statusText);
+        }
+      }
+      setStatus('ok');
+      setPicked(new Set());
+      setOpen(false);
+      onAdded?.();
+    } catch {
+      setStatus('err');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className={`bulk-add-bar ${disabled ? 'is-disabled' : ''}`}
+      ref={wrapRef}
+      data-testid="bulk-add-bar"
+    >
+      <div className="bulk-add-bar-info">
+        <span className="bulk-add-bar-icon" aria-hidden>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+        </span>
+        <span className="bulk-add-bar-text">
+          一键添加到 Preset · 当前分类共 <strong>{allRulesInActiveCat.length}</strong> 条规则
+        </span>
+      </div>
+      <button
+        type="button"
+        className="btn btn-primary"
+        disabled={disabled || loading || presets.length === 0 || allRulesInActiveCat.length === 0}
+        onClick={() => setOpen((o) => !o)}
+        data-testid="bulk-add-trigger"
+      >
+        选择 Preset…
+      </button>
+      {status === 'ok' && <span className="bulk-add-bar-status">✓ 已加入</span>}
+      {status === 'err' && <span className="bulk-add-bar-status error">⚠ 失败</span>}
+      {open && (
+        <div className="bulk-add-menu" role="listbox">
+          {presets.length === 0 ? (
+            <p className="bulk-add-menu-empty">还没有 Preset。切到 Preset tab 新建一个。</p>
+          ) : (
+            <>
+              <ul className="bulk-add-list">
+                {presets.map((p) => (
+                  <li key={`${p.scope}:${p.id}`}>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={picked.has(p.id)}
+                        onChange={() => togglePick(p.id)}
+                      />
+                      <span>{p.name}</span>
+                      <span className="bulk-add-scope">{p.scope}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+              <div className="bulk-add-foot">
+                <button type="button" className="btn btn-ghost" onClick={() => setOpen(false)} disabled={saving}>取消</button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={commit}
+                  disabled={saving || picked.size === 0}
+                  data-testid="bulk-add-confirm"
+                >
+                  {saving ? '保存中…' : `一键加入 ${picked.size || ''} 个 Preset`}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
