@@ -124,7 +124,20 @@ export function listPresets(scope: PresetScope, cwd?: string): PresetIndexEntry[
   return idx.presets;
 }
 
-/** Read a single preset by id (project scope first, then global). */
+/** Read a single preset by id, return null if missing (no throw). */
+export function tryReadPreset(id: string, scope: PresetScope, cwd?: string): Preset | null {
+  const dir = presetDir(scope, cwd);
+  const fp = presetFilePath(dir, id);
+  if (!fs.existsSync(fp)) return null;
+  try {
+    const raw = JSON.parse(fs.readFileSync(fp, 'utf-8'));
+    return normalizePreset(validatePreset(raw, fp));
+  } catch {
+    return null;
+  }
+}
+
+/** Read a single preset by id (throws if missing). */
 export function readPreset(id: string, scope: PresetScope, cwd?: string): Preset {
   const dir = presetDir(scope, cwd);
   const fp = presetFilePath(dir, id);

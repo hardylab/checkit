@@ -212,6 +212,99 @@ export function cmdPresetShow(args: string[], cwd: string): void {
 // ─────────────────────────────────────────────────────────
 // preset apply <id> [--scope project|global] [--cwd <dir>]
 // ─────────────────────────────────────────────────────────
+// preset update <id> [--add-rule <rule-id>] [--remove-rule <rule-id>]
+//                 [--used-in-workspaces <ws-id>] [--not-used-in <ws-id>]
+//                 [--scope project|global] [--json]
+//
+// Idempotent updates to a preset's metadata fields. Used by desktop to
+// "add this rule to preset X" / "remove from preset Y" without rewriting
+// the whole preset file.
+export function cmdPresetUpdate(args: string[], cwd: string): void {
+  const asJson = hasFlag(args, '--json');
+  const pos = args.filter((a) => !a.startsWith('--'));
+  const id = pos[0];
+  if (!id) die('preset update: <id> required');
+
+  // Try the requested scope first; if not found, fall back to the other
+  // (project → global, or vice versa). This is convenient for the
+  // desktop "add this rule to preset" flow which doesn't always know
+  // which scope a preset lives in.
+  const scopeArg = flag(args, '--scope') as PresetScope | undefined;
+  const scopesToTry: PresetScope[] = scopeArg
+    ? [scopeArg]
+    : ['global', 'project'];
+  let preset: Preset | null = null;
+  let foundScope: PresetScope | null = null;
+  // Inline tryRead (same pattern as cmdPresetShow) — readPreset throws
+  // when missing, so we wrap with try/catch. Using tryReadPreset from
+  // store.ts would also work, but tsup's CJS bundling sometimes drops
+  // re-exports of inline functions, so we keep the pattern local.
+  const tryRead = (s: PresetScope): Preset | null => {
+    try { return readPreset(id, s, cwd); } catch { return null; }
+  };
+  for (const s of scopesToTry) {
+    const p = tryRead(s);
+    if (p) { preset = p; foundScope = s; break; }
+  }
+  if (!preset || !foundScope) {
+    die(`preset "${id}" not found in any of: ${scopesToTry.join(', ')}`);
+  }
+  const scope = foundScope;
+
+  const addRules = (() => {
+    const out: string[] = [];
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === '--add-rule' && i + 1 < args.length) out.push(args[i + 1]);
+    }
+    return out;
+  })();
+  const removeRules = (() => {
+    const out: string[] = [];
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === '--remove-rule' && i + 1 < args.length) out.push(args[i + 1]);
+    }
+    return out;
+  })();
+  const addWorkspaces = (() => {
+    const out: string[] = [];
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === '--used-in-workspaces' && i + 1 < args.length) out.push(args[i + 1]);
+    }
+    return out;
+  })();
+  const removeWorkspaces = (() => {
+    const out: string[] = [];
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === '--not-used-in' && i + 1 < args.length) out.push(args[i + 1]);
+    }
+    return out;
+  })();
+
+  // Dedupe rules.
+  const ruleIds = new Set((preset.rules ?? []).map((r) => r.id));
+  for (const r of removeRules) ruleIds.delete(r);
+  for (const r of addRules) ruleIds.add(r);
+  preset.rules = Array.from(ruleIds).map((rid) => {
+    const existing = preset.rules.find((r) => r.id === rid);
+    return existing ?? { id: rid, enabled: true, threshold: 'error' };
+  });
+
+  // Dedupe usedInWorkspaces.
+  const ws = new Set(preset.usedInWorkspaces ?? []);
+  for (const w of removeWorkspaces) ws.delete(w);
+  for (const w of addWorkspaces) ws.add(w);
+  preset.usedInWorkspaces = Array.from(ws);
+
+  preset.metadata = { ...preset.metadata, updated_at: new Date().toISOString() };
+
+  writePreset(preset, { scope, cwd, allowOverwrite: true });
+  if (asJson) {
+    console.log(JSON.stringify({ ok: true, preset }, null, 2));
+  } else {
+    console.log(`✓ updated preset: ${id}`);
+  }
+}
+
 export function cmdPresetApply(args: string[], cwd: string): void {
   const positional = args.filter((a) => !a.startsWith('--'));
   const id = positional[0];
@@ -291,6 +384,7 @@ export const PRESET_COMMANDS = {
   new: cmdPresetNew,
   show: cmdPresetShow,
   apply: cmdPresetApply,
+  update: cmdPresetUpdate,
   delete: cmdPresetDelete,
   export: cmdPresetExport,
   import: cmdPresetImport,

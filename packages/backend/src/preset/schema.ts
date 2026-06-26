@@ -35,6 +35,14 @@ export interface Preset {
   version?: string;                           // default '1.0'
   source?: PresetSource;                      // default 'manual'
   rules: PresetRuleConfig[];
+  /**
+   * Reverse-pointer: workspace ids that include this preset. Populated by
+   * the desktop "添加到 preset" dropdown — the workspace's presetIds list
+   * is the source of truth, and the preset file mirrors it here so we
+   * can render "applied to N workspaces" in the preset detail view
+   * without scanning every workspace JSON.
+   */
+  usedInWorkspaces?: string[];
   metadata?: {
     created_at?: string;                       // ISO 8601
     created_from?: string;                     // 自由文本,如 "chat:typescript strict mode"
@@ -112,6 +120,11 @@ export function validatePreset(raw: unknown, file?: string): Preset {
       : 'manual',
     rules,
     metadata: (typeof r.metadata === 'object' && r.metadata !== null) ? r.metadata as Preset['metadata'] : {},
+    // Forward the reverse-pointer field. Validated lightly — must be an
+    // array of strings if present.
+    usedInWorkspaces: Array.isArray(r.usedInWorkspaces)
+      ? (r.usedInWorkspaces as unknown[]).filter((x): x is string => typeof x === 'string')
+      : undefined,
   };
 }
 
