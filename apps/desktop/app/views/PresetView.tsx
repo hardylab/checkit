@@ -17,12 +17,14 @@ interface PresetDoc {
   version?: string;
   source?: 'bundled' | 'manual' | 'ai-generated' | 'imported';
   scope: 'project' | 'global';
-  rules: Array<{
+  /** CLI list output uses `rule_count`; the full preset (show) uses `rules`. */
+  rules?: Array<{
     id: string;
     enabled?: boolean;
     threshold?: 'off' | 'warn' | 'error';
     globs?: string[];
   }>;
+  rule_count?: number;
   usedInWorkspaces?: string[];
   metadata?: { created_at?: string; updated_at?: string; created_from?: string };
 }
@@ -193,7 +195,7 @@ export function PresetView() {
                 <div className="preset-row-name">{p.name}</div>
                 <div className="preset-row-meta">
                   <span className="source-badge source-{p.source}">{p.source ?? 'manual'}</span>
-                  <span className="preset-row-count">{p.rules.length} 条规则</span>
+                  <span className="preset-row-count">{(p.rules?.length ?? p.rule_count ?? 0)} 条规则</span>
                   {p.usedInWorkspaces && p.usedInWorkspaces.length > 0 && (
                     <span className="preset-row-usage">用于 {p.usedInWorkspaces.length} 个 workspace</span>
                   )}
@@ -231,7 +233,23 @@ function PresetDetail({
   onToggleRule: (ruleId: string, currentlyEnabled: boolean) => void;
   onDelete: (id: string) => void;
 }) {
-  const usedIn = (preset.usedInWorkspaces ?? []).map((id) => {
+  // The list-row preset lacks `rules` (only has rule_count). Fetch the
+  // full preset on mount so the detail view can render the Switch
+  // toggles. Merge the fresh data into a local "full" state.
+  const [full, setFull] = useState<PresetDoc>(preset);
+  useEffect(() => {
+    let cancelled = false;
+    setFull(preset);
+    fetch(`/api/presets/${encodeURIComponent(preset.id)}`, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { preset?: PresetDoc } | null) => {
+        if (cancelled || !j?.preset) return;
+        setFull(j.preset);
+      })
+      .catch(() => { /* ignore — keep list shape */ });
+    return () => { cancelled = true; };
+  }, [preset.id, preset.scope]);
+  const usedIn = (full.usedInWorkspaces ?? []).map((id) => {
     const w = workspaces.find((x) => x.id === id);
     return { id, name: w?.name ?? id, exists: !!w };
   });
@@ -257,11 +275,11 @@ function PresetDetail({
 
       <section className="preset-section">
         <h3 className="preset-section-title">规则 (Switch 控制)</h3>
-        {preset.rules.length === 0 ? (
+        {(full.rules?.length ?? 0) === 0 ? (
           <p className="preset-empty">这个 Preset 还没有规则。去「规则市场」用「添加到」按钮加。</p>
         ) : (
           <ul className="preset-rule-list" role="list">
-            {preset.rules.map((r) => {
+            {(full.rules ?? []).map((r) => {
               const on = r.enabled !== false;
               return (
                 <li
