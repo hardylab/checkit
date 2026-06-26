@@ -80,20 +80,18 @@ test.describe('AI-fix navigation', () => {
     await page.goto('/');
     await page.waitForSelector('.issue-row', { timeout: 10_000 });
     await page.locator('.issue-row').first().click();
-    await page.getByRole('button', { name: /一键 AI 修复/ }).click();
+    // Right pane CTA (after an issue is selected). The dash-main also renders
+    // a "一键 AI 修复 (N)" summary button — use the →-suffixed action button.
+    await page.getByRole('button', { name: /一键 AI 修复 →/ }).click();
     await page.waitForSelector('[data-view="ai-fix"]', { timeout: 5_000 });
-    const stored = await page.evaluate(() => localStorage.getItem('checkit:view'));
-    expect(stored).toBeTruthy();
-    const view = JSON.parse(stored!);
-    expect(view.id).toBe('ai-fix');
-    expect(view.idx).toBe(0);
-    expect(view.file).toBe('demo.json');
+    // URL is the source of truth for routing state.
+    const path = new URL(page.url()).pathname;
+    expect(path).toBe('/ai-fix/demo.json/0');
   });
 
-  test('AI fix view is reachable directly via stored view state', async ({ page }) => {
+  test('AI fix view is reachable directly via URL', async ({ page }) => {
     await gotoDirectView(page, 'ai-fix', {
       'checkit:last-report': SAMPLE,
-      'checkit:view': { id: 'ai-fix', idx: 0, file: 'demo.json' },
     });
     await expect(page.locator('.ai-fix-page')).toBeVisible();
   });
@@ -115,7 +113,6 @@ test.describe('Responsive', () => {
     await page.setViewportSize({ width: 800, height: 600 });
     await gotoDirectView(page, 'ai-fix', {
       'checkit:last-report': SAMPLE,
-      'checkit:view': { id: 'ai-fix', idx: 0, file: 'demo.json' },
     });
     const gridColumns = await page.locator('.ai-fix-page').evaluate((el) => getComputedStyle(el).gridTemplateColumns);
     expect(gridColumns.split(' ').length).toBeLessThanOrEqual(1);

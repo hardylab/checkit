@@ -205,7 +205,7 @@ export function PresetView() {
           </ul>
         </aside>
 
-        <main className="preset-detail">
+        <section className="preset-detail">
           {selected ? (
             <PresetDetail
               preset={selected}
@@ -216,7 +216,7 @@ export function PresetView() {
           ) : (
             <p className="preset-detail-empty">从左边选一个 Preset 看详情。</p>
           )}
-        </main>
+        </section>
       </div>
     </div>
   );

@@ -1,94 +1,67 @@
 'use client';
-// The SPA entry. Uses react-router's MemoryRouter to drive navigation.
+// The SPA entry. Strict react-router BrowserRouter architecture.
 //
-// Why MemoryRouter (not HashRouter or BrowserRouter):
-// - The desktop app is served from a single URL (`/`) — there's no
-//   path navigation from the browser. URL changes in the address bar
-//   aren't useful here.
-// - We still want react-router primitives (Routes, Route, useNavigate,
-//   useParams) so view components can navigate by intent rather than
-//   by direct setState.
-// - The previous in-house registry still drives the ViewState shape,
-//   so view components don't need to change. We adapt MemoryRouter's
-//   location → ViewState on the boundary.
+// Architecture:
+//   <BrowserRouter>     ← URL is observable (window.location.pathname); routing
+//                          primitives (Routes, Route, useNavigate, useParams)
+//     <Shell>           ← renders ONCE per app lifetime (topbar + rail + <main>)
+//       <Routes>        ← swaps only the <main> child based on URL
+//         <Route ... /> ← each route element is a view component (no Shell inside)
+//       </Routes>
+//     </Shell>
+//   </BrowserRouter>
+//
+// Each view component:
+//   - Has no `navigate` prop, no inner `<Shell>`.
+//   - Uses `useNavigate()` / `useParams()` from react-router directly.
+//   - Renders ONLY its own content; the surrounding chrome is Shell's job.
+//
+// URL is the single source of truth for "where am I". No localStorage view
+// state. No in-house ViewState registry. Navigation is via real react-router
+// primitives.
+//
+// Why BrowserRouter (not MemoryRouter or HashRouter):
+// - MemoryRouter never touches window.location, so the URL is stale from the
+//   test/browser's perspective and we can't observe navigation, share links,
+//   or wait for URL transitions in e2e tests.
+// - HashRouter would work but produces ugly `/#/path` URLs and complicates
+//   tests (every page.goto needs `/` + `#` + path).
+// - BrowserRouter gives us clean `/rules/:ruleId` URLs and updates
+//   window.location.pathname on every navigation. Back/forward works.
+// - For dev/tests: Next.js [...slug] catch-all route serves the SPA at any
+//   path, so the router can take over. For packaged Electron production:
+//   a custom protocol handler serves index.html for all routes — out of
+//   scope here.
+// - Both BrowserRouter and HashRouter touch `window.document` during render;
+//   that's why SpApp is loaded with `next/dynamic({ ssr: false })` in
+//   page.tsx — it only mounts client-side.
 
 import React from 'react';
-import { MemoryRouter, Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom';
-import { renderView, type ViewId, type ViewState } from './views/registry';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Shell } from './components/Shell';
-
-function viewStateToPath(state: ViewState): string {
-  switch (state.id) {
-    case 'dashboard':   return '/';
-    case 'rules':       return '/rules';
-    case 'rule-detail': return `/rules/${encodeURIComponent(state.ruleId)}`;
-    case 'chat':        return '/chat';
-    case 'ai-fix':      return `/ai-fix/${encodeURIComponent(state.file)}/${state.idx}`;
-    case 'presets':     return '/presets';
-    case 'workspaces':  return '/workspaces';
-  }
-}
-
-function ShellWrapper({ viewId, children }: { viewId: ViewId; children: React.ReactNode }) {
-  const navigate = useNavigate();
-  // Shell expects a `navigate(next: ViewState)` function. We adapt
-  // react-router's navigate() to the ViewState shape.
-  const onNavigate = (next: ViewState) => {
-    navigate(viewStateToPath(next));
-  };
-  return (
-    <Shell view={viewId} onNavigate={onNavigate}>
-      {children}
-    </Shell>
-  );
-}
-
-function DashboardRoute() {
-  return <ShellWrapper viewId="dashboard">{renderView({ id: 'dashboard' }, noopNavigate)}</ShellWrapper>;
-}
-function RulesRoute() {
-  return <ShellWrapper viewId="rules">{renderView({ id: 'rules' }, noopNavigate)}</ShellWrapper>;
-}
-function RuleDetailRoute() {
-  const { ruleId = '' } = useParams<{ ruleId: string }>();
-  return <ShellWrapper viewId="rules">{renderView({ id: 'rule-detail', ruleId: decodeURIComponent(ruleId) }, noopNavigate)}</ShellWrapper>;
-}
-function ChatRoute() {
-  return <ShellWrapper viewId="chat">{renderView({ id: 'chat' }, noopNavigate)}</ShellWrapper>;
-}
-function AiFixRoute() {
-  const { file = '', idx = '0' } = useParams<{ file: string; idx: string }>();
-  return <ShellWrapper viewId="chat">{renderView({ id: 'ai-fix', file: decodeURIComponent(file), idx: Number(idx) || 0 }, noopNavigate)}</ShellWrapper>;
-}
-function PresetsRoute() {
-  return <ShellWrapper viewId="presets">{renderView({ id: 'presets' }, noopNavigate)}</ShellWrapper>;
-}
-function WorkspacesRoute() {
-  return <ShellWrapper viewId="workspaces">{renderView({ id: 'workspaces' }, noopNavigate)}</ShellWrapper>;
-}
-
-// `noopNavigate` is used because the inner views (DashboardView,
-// RulesView, etc.) call `navigate(next)` when the user clicks something
-// inside the view. We can't easily pass a real `navigate` here without
-// being inside the router (a re-render issue); instead the views that
-// need cross-view navigation should be migrated to use react-router's
-// useNavigate directly. For now we keep the existing ViewState API
-// and pass a no-op so views don't break.
-const noopNavigate = (_next: ViewState) => { /* see comment above */ };
+import { DashboardView } from './views/DashboardView';
+import { RulesView } from './views/RulesView';
+import { RuleDetailView } from './views/RuleDetailView';
+import { ChatView } from './views/ChatView';
+import { AiFixView } from './views/AiFixView';
+import { PresetView } from './views/PresetView';
+import { WorkspaceView } from './views/WorkspaceView';
 
 export function SpApp() {
   return (
-    <MemoryRouter>
-      <Routes>
-        <Route path="/" element={<DashboardRoute />} />
-        <Route path="/rules" element={<RulesRoute />} />
-        <Route path="/rules/:ruleId" element={<RuleDetailRoute />} />
-        <Route path="/chat" element={<ChatRoute />} />
-        <Route path="/ai-fix/:file/:idx" element={<AiFixRoute />} />
-        <Route path="/presets" element={<PresetsRoute />} />
-        <Route path="/workspaces" element={<WorkspacesRoute />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </MemoryRouter>
+    <BrowserRouter>
+      <Shell>
+        <Routes>
+          <Route path="/" element={<DashboardView />} />
+          <Route path="/rules" element={<RulesView />} />
+          <Route path="/rules/:ruleId" element={<RuleDetailView />} />
+          <Route path="/chat" element={<ChatView />} />
+          <Route path="/ai-fix/:file/:idx" element={<AiFixView />} />
+          <Route path="/presets" element={<PresetView />} />
+          <Route path="/workspaces" element={<WorkspaceView />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Shell>
+    </BrowserRouter>
   );
 }

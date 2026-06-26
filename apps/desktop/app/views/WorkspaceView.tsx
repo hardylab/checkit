@@ -173,7 +173,7 @@ export function WorkspaceView() {
           </ul>
         </aside>
 
-        <main className="workspace-detail">
+        <section className="workspace-detail">
           {selected ? (
             <WorkspaceDetail
               workspace={selected}
@@ -184,7 +184,7 @@ export function WorkspaceView() {
           ) : (
             <p className="workspace-detail-empty">从左边选一个 Workspace 看详情。</p>
           )}
-        </main>
+        </section>
       </div>
     </div>
   );

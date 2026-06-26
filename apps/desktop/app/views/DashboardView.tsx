@@ -1,13 +1,14 @@
 'use client';
 import React, { useState, useEffect, useCallback } from 'react';
-import { Shell, LoadingOverlay } from '../components/Shell';
+import { useNavigate } from 'react-router-dom';
+import { LoadingOverlay } from '../components/Shell';
 import { CATEGORIES, type Issue, type CategoryKey, categorizeIssue, computeHealth, groupBy, normalizeReport } from '../lib/report';
 import { scanProject, pickFolder, fetchRules, type RuleDoc } from '../lib/api';
-import type { NavigateFn } from './registry';
 
 const STORAGE_KEY = 'checkit:last-report';
 
-export function DashboardView({ navigate }: { navigate: NavigateFn }) {
+export function DashboardView() {
+  const navigate = useNavigate();
   const [report, setReport] = useState<{ issues: Issue[]; source: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [scanCwd, setScanCwd] = useState<string | null>(null);
@@ -32,6 +33,11 @@ export function DashboardView({ navigate }: { navigate: NavigateFn }) {
 
   const persist = useCallback((r: { issues: Issue[]; source: string }) => {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(r)); } catch {}
+    // Tell Shell (and any other top-level chrome) the report changed so the
+    // brand-sub line can update. Shell listens for this event.
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('checkit:report-changed'));
+    }
   }, []);
 
   const runScan = useCallback(async (cwd?: string, aiFix = false) => {
@@ -84,7 +90,7 @@ export function DashboardView({ navigate }: { navigate: NavigateFn }) {
 
   if (!report) {
     return (
-      <Shell view="dashboard" onNavigate={navigate}>
+      <>
         <section className="dropzone">
           <div className="dropzone-inner">
             <div style={{ color: 'var(--muted)', marginBottom: 12 }}>
@@ -127,7 +133,7 @@ export function DashboardView({ navigate }: { navigate: NavigateFn }) {
           </div>
         </section>
         {loading && <LoadingOverlay text="Scanning…" />}
-      </Shell>
+      </>
     );
   }
 
@@ -156,7 +162,7 @@ export function DashboardView({ navigate }: { navigate: NavigateFn }) {
   const selectedIssue = selectedIdx >= 0 ? issues[selectedIdx] : null;
 
   return (
-    <Shell repo={source} view="dashboard" onNavigate={navigate}>
+    <>
       <section className="dash">
         <aside className="side-rail">
           <div className="side-eyebrow">体检项目</div>
@@ -201,7 +207,7 @@ export function DashboardView({ navigate }: { navigate: NavigateFn }) {
               <div className="summary-cell"><div className="summary-label">已加载规则</div><div className="summary-value" id="fixable-count">
                 <button
                   type="button"
-                  onClick={() => navigate({ id: 'rules' })}
+                  onClick={() => navigate('/rules')}
                   style={{ background: 'transparent', border: 'none', padding: 0, color: 'var(--accent)', cursor: 'pointer', font: 'inherit' }}
                 >{rules.length || '…'} →</button>
               </div></div>
@@ -291,7 +297,7 @@ export function DashboardView({ navigate }: { navigate: NavigateFn }) {
                   <button
                     type="button"
                     className="btn btn-primary"
-                    onClick={() => navigate({ id: 'ai-fix', idx: selectedIdx, file: source })}
+                    onClick={() => navigate(`/ai-fix/${encodeURIComponent(source)}/${selectedIdx}`)}
                     style={{ textAlign: 'center' }}
                   >
                     一键 AI 修复 →
@@ -305,7 +311,7 @@ export function DashboardView({ navigate }: { navigate: NavigateFn }) {
         </aside>
       </section>
       {loading && <LoadingOverlay />}
-    </Shell>
+    </>
   );
 }
 

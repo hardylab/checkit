@@ -160,7 +160,9 @@ test.describe('Dashboard — loaded state', () => {
     await page.goto('/');
     await page.waitForSelector('.issue-row');
     await page.locator('.issue-row').first().click();
-    const cta = page.getByRole('button', { name: /一键 AI 修复/ });
+    // The right pane CTA appears after an issue is selected. The dash-main
+    // also renders a summary button — disambiguate by the → suffix.
+    const cta = page.getByRole('button', { name: /一键 AI 修复 →/ });
     await expect(cta).toBeVisible();
   });
 
@@ -168,7 +170,7 @@ test.describe('Dashboard — loaded state', () => {
     await page.goto('/');
     await page.waitForSelector('.issue-row');
     await page.locator('.issue-row').first().click();
-    await page.getByRole('button', { name: /一键 AI 修复/ }).click();
+    await page.getByRole('button', { name: /一键 AI 修复 →/ }).click();
     await page.waitForSelector('[data-view="ai-fix"]', { timeout: 5_000 });
   });
 

@@ -1,64 +1,109 @@
 // tests/e2e/helpers.ts — shared helpers for the SPA app.
 //
-// The app is a single-page React SPA. "Navigation" between views is an
-// in-memory state change, not a URL change. The URL stays at "/" forever.
-// So instead of `page.goto('/chat')` we use `gotoView('chat')` which:
-//   1. Seeds any localStorage the view needs
-//   2. Goes to "/"
-//   3. Waits for the target view to be the active one
+// Post-refactor: the app is a strict react-router SPA using BrowserRouter.
+// URL semantics live in `window.location.pathname` (clean `/path` URLs).
 //
-// `waitForURL` is gone — there's no URL change to wait for. Use waitForView
-// for the equivalent assertion.
+//   - `gotoView(view)`   → goto `/<view-path>`, wait for the active view.
+//   - `gotoDirectView`   → goto `/<sub-view-path>` with URL params derived
+//                          from the seed bag (e.g. /ai-fix/foo.json/0).
+//   - `clickTab(view)`   → click a top-level rail tab.
+//
+// `checkit:last-report` is still seeded via localStorage (it's data, not
+// routing state). The old `checkit:view` key is gone — no longer needed.
 
 import type { Page, BrowserContext } from '@playwright/test';
 
-export type ViewId = 'dashboard' | 'rules' | 'chat' | 'ai-fix';
+export type ViewId =
+  | 'dashboard'
+  | 'rules'
+  | 'rule-detail'
+  | 'chat'
+  | 'ai-fix'
+  | 'presets'
+  | 'workspaces';
 
+/**
+ * Map a view id to its canonical URL path. For sub-views that need params
+ * (rule-detail, ai-fix) we pull them from the seed bag if present.
+ *
+ * Returns a path like `/chat` or `/ai-fix/demo.json/0`.
+ */
+function pathFor(view: ViewId, seed: Record<string, unknown> = {}): string {
+  switch (view) {
+    case 'dashboard':
+      return '/';
+    case 'rules':
+      return '/rules';
+    case 'rule-detail': {
+      const ruleId =
+        typeof seed['checkit:rule-id'] === 'string'
+          ? (seed['checkit:rule-id'] as string)
+          : 'no-console-log';
+      return `/rules/${encodeURIComponent(ruleId)}`;
+    }
+    case 'chat':
+      return '/chat';
+    case 'ai-fix': {
+      let file = 'demo.json';
+      let idx = 0;
+      if (typeof seed['checkit:ai-file'] === 'string') {
+        file = seed['checkit:ai-file'] as string;
+      } else {
+        const report = seed['checkit:last-report'] as { source?: string } | undefined;
+        if (report && typeof report.source === 'string') file = report.source;
+      }
+      if (typeof seed['checkit:ai-idx'] === 'number') {
+        idx = seed['checkit:ai-idx'] as number;
+      }
+      return `/ai-fix/${encodeURIComponent(file)}/${idx}`;
+    }
+    case 'presets':
+      return '/presets';
+    case 'workspaces':
+      return '/workspaces';
+  }
+}
+
+/**
+ * Navigate directly to a top-level view.
+ */
 export async function gotoView(
   page: Page,
   view: ViewId,
-  opts: { seed?: Record<string, unknown>; viaTab?: boolean } = {}
+  opts: { seed?: Record<string, unknown> } = {}
 ) {
-  // Seed the target view directly into localStorage (so it survives reloads).
-  // NOTE: addInitScript re-runs on EVERY navigation including `page.reload()`,
-  // so we must NOT clear keys here — that would wipe the view state the app
-  // just persisted. Just overwrite with what we want.
-  await page.addInitScript(({ view, seed }) => {
-    localStorage.setItem('checkit:view', JSON.stringify({ id: view }));
-    if (seed) {
-      for (const [k, v] of Object.entries(seed)) {
-        localStorage.setItem(k, JSON.stringify(v));
-      }
+  const seed = opts.seed ?? {};
+  await page.addInitScript(({ seed }) => {
+    for (const [k, v] of Object.entries(seed)) {
+      localStorage.setItem(k, JSON.stringify(v));
     }
-  }, { view, seed: opts.seed });
+  }, { seed });
 
-  // First load — SpApp hydrates from localStorage and renders the target view
-  await page.goto('/');
-
-  // Wait for the view container to render (hydrated)
+  await page.goto(pathFor(view, seed));
   await page.waitForSelector(`[data-view="${view}"]`, { timeout: 10_000 });
 }
 
-// For tests that need a specific sub-view (rule-detail, ai-fix) seeded via
-// localStorage, we don't go through the rail tab — we set the view state
-// directly and goto /. Used by ai-fix and rule-detail tests.
+/**
+ * Navigate directly to a sub-view (rule-detail, ai-fix) using parameters
+ * extracted from the seed bag.
+ */
 export async function gotoDirectView(
   page: Page,
   viewId: string,
   seed: Record<string, unknown> = {}
 ) {
-  await page.addInitScript(({ viewId, seed }) => {
-    localStorage.setItem('checkit:view', JSON.stringify({ id: viewId }));
+  await page.addInitScript(({ seed }) => {
     for (const [k, v] of Object.entries(seed)) {
       localStorage.setItem(k, JSON.stringify(v));
     }
-  }, { viewId, seed });
-  await page.goto('/');
+  }, { seed });
+  await page.goto(pathFor(viewId as ViewId, seed));
   await page.waitForSelector(`[data-view="${viewId}"]`, { timeout: 10_000 });
 }
 
-// Convenience for navigating by clicking a tab from a test that already has
-// the app mounted.
+/**
+ * Click a top-level rail tab. Used in tests that already have the app mounted.
+ */
 export async function clickTab(page: Page, view: ViewId) {
   await page.getByTestId(`rail-tab-${view}`).click();
   await page.waitForSelector(`[data-view="${view}"]`, { timeout: 5_000 });

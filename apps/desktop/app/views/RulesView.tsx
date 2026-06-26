@@ -1,13 +1,12 @@
 'use client';
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import { Shell } from '../components/Shell';
+import { useNavigate } from 'react-router-dom';
 import { fetchRules, fetchRuleBody, type RuleDoc } from '../lib/api';
 import { useColumnLayout } from '../lib/use-column-layout';
 import {
   RULE_SETS, CATEGORY_LABEL, isSetInstalled, fmtInstalls, freshnessLabel,
   type RuleSet, type RuleSetCategory,
 } from '../lib/rule-sets';
-import type { NavigateFn } from './registry';
 
 type Scope = 'mine' | 'all';
 
@@ -44,7 +43,8 @@ const ICONS: Record<string, React.ReactNode> = {
 
 type RuleConfig = { enabled: boolean; threshold: RuleDoc['severity']; globs: string[] };
 
-export function RulesView({ navigate }: { navigate: NavigateFn }) {
+export function RulesView() {
+  const navigate = useNavigate();
   const [scope, setScope] = useState<Scope>('all');
   const [activeCat, setActiveCat] = useState<RuleSetCategory | null>(null);
   const [selectedSetId, setSelectedSetId] = useState<string | null>(null);
@@ -245,7 +245,7 @@ export function RulesView({ navigate }: { navigate: NavigateFn }) {
   const installedCount = installedSets.size;
 
   return (
-    <Shell repo="rules-market" view="rules" onNavigate={navigate}>
+    <>
       <div className="rules-shell">
         <aside
           ref={sideRailRef}
@@ -306,7 +306,7 @@ export function RulesView({ navigate }: { navigate: NavigateFn }) {
           />
         </aside>
 
-        <main className="rules-market-main">
+        <section className="rules-market-main">
           <BulkAddToPresetsBar
             disabled={!activeCat || setsInActiveCat.length === 0}
             allRulesInActiveCat={(() => {
@@ -436,7 +436,7 @@ export function RulesView({ navigate }: { navigate: NavigateFn }) {
               </section>
             </>
           )}
-        </main>
+        </section>
       </div>
 
       <div className={`drawer-overlay ${drawerRule ? 'open' : ''}`} onClick={closeDrawer} aria-hidden={!drawerRule} />
@@ -521,7 +521,7 @@ export function RulesView({ navigate }: { navigate: NavigateFn }) {
           </>
         )}
       </aside>
-    </Shell>
+    </>
   );
 }
 

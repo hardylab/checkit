@@ -1,8 +1,6 @@
 'use client';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Shell } from '../components/Shell';
 import type { RuleSet } from '../lib/rule-sets';
-import type { NavigateFn } from './registry';
 
 type Message = {
   id: string;
@@ -60,7 +58,7 @@ const fmtRelative = (ts: number): string => {
   return new Date(ts).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
 };
 
-export function ChatView({ navigate }: { navigate: NavigateFn }) {
+export function ChatView() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [input, setInput] = useState('');
@@ -293,7 +291,7 @@ export function ChatView({ navigate }: { navigate: NavigateFn }) {
   };
 
   return (
-    <Shell repo="chat" view="chat" onNavigate={navigate}>
+    <>
       <div className="chat-page">
         <aside className="chat-side-rail" aria-label="对话历史">
           <div className="chat-side-eyebrow">对话</div>
@@ -360,7 +358,7 @@ export function ChatView({ navigate }: { navigate: NavigateFn }) {
           </nav>
         </aside>
 
-        <main className="chat-conversation">
+        <section className="chat-conversation">
           <h1 className="chat-page-title">AI 规则助手</h1>
           {!active ? (
             <div className="chat-empty">
@@ -514,8 +512,8 @@ export function ChatView({ navigate }: { navigate: NavigateFn }) {
               </div>
             </>
           )}
-        </main>
+        </section>
       </div>
-    </Shell>
+    </>
   );
 }

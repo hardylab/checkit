@@ -26,7 +26,7 @@ const SAMPLE = {
 async function seedAndGotoAiFix(page: Page, idx = 0) {
   await gotoDirectView(page, 'ai-fix', {
     'checkit:last-report': SAMPLE,
-    'checkit:view': { id: 'ai-fix', idx, file: 'demo-report.json' },
+    'checkit:ai-idx': idx,
   });
 }
 
@@ -89,11 +89,13 @@ test.describe('AI-fix view', () => {
   });
 
   test('missing idx shows placeholder + back CTA', async ({ page }) => {
-    await page.addInitScript((report) => {
-      localStorage.setItem('checkit:last-report', JSON.stringify(report));
-      localStorage.setItem('checkit:view', JSON.stringify({ id: 'ai-fix', idx: 99, file: 'foo.json' }));
-    }, SAMPLE);
-    await page.goto('/');
+    // Navigate to an ai-fix URL whose idx is out of bounds for the seeded
+    // report. The placeholder branch should render with a back CTA.
+    await gotoDirectView(page, 'ai-fix', {
+      'checkit:last-report': SAMPLE,
+      'checkit:ai-file': 'foo.json',
+      'checkit:ai-idx': 99,
+    });
     await page.waitForSelector('[data-view="ai-fix"]', { timeout: 10_000 });
     await expect(page.getByRole('heading', { name: '找不到这个问题' })).toBeVisible();
     await expect(page.getByRole('button', { name: '回到主控台' })).toBeVisible();

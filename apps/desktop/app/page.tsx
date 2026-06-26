@@ -1,15 +1,14 @@
 // Client-side root. We disable SSR for the router subtree because
-// react-router's HashRouter touches `window.document` during render
+// react-router's BrowserRouter touches `window.document` during render
 // and Next 14 will pre-render the page tree (which would crash with
 // "document is not defined").
 //
 // We use `next/dynamic({ ssr: false })` to load the router subtree
-// only on the client. Inside we use react-router's <MemoryRouter>
-// because the desktop app is served from a single URL (/) — there's
-// no real path navigation, only in-app state changes. MemoryRouter
-// gives us routing primitives (Routes, Route, useNavigate, useParams)
-// without touching the URL, which fits a SPA that wants URL semantics
-// inside the renderer but no path changes from the browser.
+// only on the client. BrowserRouter takes over once mounted and reads
+// `window.location.pathname` to render the right view.
+//
+// Deep links (e.g. `/rules/no-console-log`) hit the `[...slug]` catch-all
+// which re-exports this same Page component, so the SPA loads at any path.
 
 'use client';
 

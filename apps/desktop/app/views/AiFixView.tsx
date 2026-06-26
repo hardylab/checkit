@@ -1,12 +1,14 @@
 'use client';
 import React, { useState, useMemo } from 'react';
-import { Shell } from '../components/Shell';
+import { useNavigate, useParams } from 'react-router-dom';
 import type { Issue } from '../lib/report';
-import type { NavigateFn } from './registry';
 
 const STORAGE_KEY = 'checkit:last-report';
 
-export function AiFixView({ idx, file, navigate }: { idx: number; file: string; navigate: NavigateFn }) {
+export function AiFixView() {
+  const { file = '', idx: idxParam = '0' } = useParams<{ file: string; idx: string }>();
+  const idx = Number(idxParam) || 0;
+  const navigate = useNavigate();
   const [report] = useState<{ issues: Issue[]; source: string } | null>(() => {
     try {
       const s = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
@@ -23,15 +25,13 @@ export function AiFixView({ idx, file, navigate }: { idx: number; file: string; 
 
   if (!issue || !diff) {
     return (
-      <Shell repo={report?.source ?? file} view="dashboard" onNavigate={navigate}>
-        <div className="placeholder">
-          <div className="placeholder-card">
-            <h2>找不到这个问题</h2>
-            <p>报告已经更新或 idx 失效。<br />回到主控台重新选择一条 issue。</p>
-            <button type="button" className="btn btn-primary" onClick={() => navigate({ id: 'dashboard' })}>回到主控台</button>
-          </div>
+      <div className="placeholder">
+        <div className="placeholder-card">
+          <h2>找不到这个问题</h2>
+          <p>报告已经更新或 idx 失效。<br />回到主控台重新选择一条 issue。</p>
+          <button type="button" className="btn btn-primary" onClick={() => navigate('/')}>回到主控台</button>
         </div>
-      </Shell>
+      </div>
     );
   }
 
@@ -50,16 +50,15 @@ export function AiFixView({ idx, file, navigate }: { idx: number; file: string; 
   };
 
   return (
-    <Shell repo={report?.source ?? file} view="dashboard" onNavigate={navigate}>
-      <div className="ai-fix-page">
-        <aside className="ai-fix-aside">
-          <div style={{ marginBottom: 16 }}>
-            <button
-              type="button"
-              onClick={() => navigate({ id: 'dashboard' })}
-              style={{ background: 'transparent', border: 'none', padding: 0, font: 'inherit', color: 'var(--muted)', fontSize: 12, cursor: 'pointer' }}
-            >← 返回主控台</button>
-          </div>
+    <div className="ai-fix-page">
+      <aside className="ai-fix-aside">
+        <div style={{ marginBottom: 16 }}>
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            style={{ background: 'transparent', border: 'none', padding: 0, font: 'inherit', color: 'var(--muted)', fontSize: 12, cursor: 'pointer' }}
+          >← 返回主控台</button>
+        </div>
           <div className="detail-section" style={{ marginBottom: 16 }}>
             <h4>问题诊断</h4>
             <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--fg-strong)', marginBottom: 6 }}>{issue.issue}</div>
@@ -116,14 +115,13 @@ export function AiFixView({ idx, file, navigate }: { idx: number; file: string; 
             <button className="btn" type="button" onClick={() => { navigator.clipboard.writeText(diff.raw).catch(() => {}); }}>
               复制 Patch
             </button>
-            <button type="button" className="btn btn-ghost" onClick={() => navigate({ id: 'dashboard' })}>拒绝</button>
+            <button type="button" className="btn btn-ghost" onClick={() => navigate('/')}>拒绝</button>
             <button className="btn btn-primary" type="button" onClick={onAccept} disabled={applying}>
               {applying ? '执行中…' : '应用补丁'}
             </button>
           </div>
         </section>
       </div>
-    </Shell>
   );
 }
 

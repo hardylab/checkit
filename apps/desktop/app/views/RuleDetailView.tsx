@@ -1,8 +1,7 @@
 'use client';
 import React, { useEffect, useState } from 'react';
-import { Shell } from '../components/Shell';
+import { useNavigate, useParams } from 'react-router-dom';
 import { fetchRuleBody, type RuleDoc } from '../lib/api';
-import type { NavigateFn } from './registry';
 
 const SEVERITY_PILL: Record<RuleDoc['severity'], string> = {
   error: 'pill pill-error',
@@ -15,7 +14,9 @@ const SEVERITY_LABEL: Record<RuleDoc['severity'], string> = {
   info: '提示',
 };
 
-export function RuleDetailView({ ruleId, navigate }: { ruleId: string; navigate: NavigateFn }) {
+export function RuleDetailView() {
+  const { ruleId = '' } = useParams<{ ruleId: string }>();
+  const navigate = useNavigate();
   const [body, setBody] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,45 +29,43 @@ export function RuleDetailView({ ruleId, navigate }: { ruleId: string; navigate:
   const html = body ? renderMd(body) : '';
 
   return (
-    <Shell repo={`rules · ${ruleId}`} view="rules" onNavigate={navigate}>
-      <div style={{ padding: '24px 32px', maxWidth: 880 }}>
-        <div style={{ marginBottom: 16 }}>
-          <button
-            type="button"
-            onClick={() => navigate({ id: 'rules' })}
-            style={{ background: 'transparent', border: 'none', padding: 0, font: 'inherit', color: 'var(--muted)', fontSize: 12, cursor: 'pointer' }}
-          >
-            ← 回到规则市场
-          </button>
-        </div>
-
-        <header style={{ marginBottom: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-            <code style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 600, color: 'var(--fg-strong)' }}>
-              {ruleId}
-            </code>
-            {body && <span className={SEVERITY_PILL[extractSeverity(body)]}>{SEVERITY_LABEL[extractSeverity(body)]}</span>}
-          </div>
-          <h1 style={{ fontSize: 18, fontWeight: 600, color: 'var(--fg-strong)', margin: 0 }}>
-            {body ? extractTitle(body) : '加载中…'}
-          </h1>
-        </header>
-
-        {error && (
-          <div style={{ padding: 16, background: 'var(--danger-soft)', color: 'var(--danger)', borderRadius: 'var(--r)' }}>
-            加载失败: {error}
-          </div>
-        )}
-
-        {body && (
-          <article
-            className="md-body"
-            style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--r-lg)', padding: 24 }}
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
-        )}
+    <div style={{ padding: '24px 32px', maxWidth: 880 }}>
+      <div style={{ marginBottom: 16 }}>
+        <button
+          type="button"
+          onClick={() => navigate('/rules')}
+          style={{ background: 'transparent', border: 'none', padding: 0, font: 'inherit', color: 'var(--muted)', fontSize: 12, cursor: 'pointer' }}
+        >
+          ← 回到规则市场
+        </button>
       </div>
-    </Shell>
+
+      <header style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+          <code style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 600, color: 'var(--fg-strong)' }}>
+            {ruleId}
+          </code>
+          {body && <span className={SEVERITY_PILL[extractSeverity(body)]}>{SEVERITY_LABEL[extractSeverity(body)]}</span>}
+        </div>
+        <h1 style={{ fontSize: 18, fontWeight: 600, color: 'var(--fg-strong)', margin: 0 }}>
+          {body ? extractTitle(body) : '加载中…'}
+        </h1>
+      </header>
+
+      {error && (
+        <div style={{ padding: 16, background: 'var(--danger-soft)', color: 'var(--danger)', borderRadius: 'var(--r)' }}>
+          加载失败: {error}
+        </div>
+      )}
+
+      {body && (
+        <article
+          className="md-body"
+          style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--r-lg)', padding: 24 }}
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      )}
+    </div>
   );
 }
 
