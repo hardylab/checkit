@@ -18,7 +18,8 @@
     "dist": "electron-builder"
   },
   "dependencies": {
-    "@checkit/cli": "workspace:*"
+    "@checkit/cli": "workspace:*",
+    "react-router-dom": "^7.18.0"
   },
   "devDependencies": {
     "@playwright/test": "1.49.1",
