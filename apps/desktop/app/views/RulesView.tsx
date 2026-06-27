@@ -300,15 +300,6 @@ export function RulesView() {
                   <h2 className="rules-pane-title">{CATEGORY_LABEL[activeCat]}</h2>
                   <p className="rules-pane-sub">{setsInActiveCat.length} 个规则集</p>
                 </header>
-                <BulkAddToPresetsBar
-                  disabled={false}
-                  allRulesInActiveCat={(() => {
-                    const ids = new Set<string>();
-                    for (const s of setsInActiveCat) for (const id of s.ruleIds) ids.add(id);
-                    return Array.from(ids);
-                  })()}
-                  onAdded={() => setHydrated(false)}
-                />
                 <ul className="rules-set-list" role="list">
                   {setsInActiveCat.map((s) => {
                     const installed = installedSets.has(s.id);
@@ -374,6 +365,15 @@ export function RulesView() {
                       <h2 className="rules-pane-title">{selectedSet.name}</h2>
                       <p className="rules-pane-sub">{selectedSetRules.length} 条具体规则</p>
                     </header>
+                    <BulkAddToPresetsBar
+                      disabled={false}
+                      allRulesInActiveCat={(() => {
+                        const ids = new Set<string>();
+                        for (const s of setsInActiveCat) for (const id of s.ruleIds) ids.add(id);
+                        return Array.from(ids);
+                      })()}
+                      onAdded={() => setHydrated(false)}
+                    />
                     <ul className="rules-rule-list" role="list">
                       {selectedSetRules.map((r) => (
                         <li
