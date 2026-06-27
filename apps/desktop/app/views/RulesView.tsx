@@ -191,35 +191,6 @@ export function RulesView() {
     });
   };
 
-  const toggleSet = (set: RuleSet, on: boolean) => {
-    if (on) {
-      setInstalledSets((prev) => new Set([...prev, set.id]));
-      setInstalledRules((prev) => new Set([...prev, ...set.ruleIds]));
-      setConfigs((prev) => {
-        const next = { ...prev };
-        for (const id of set.ruleIds) {
-          const cur = next[id] ?? { enabled: true, threshold: allRules.find((r) => r.id === id)?.severity ?? 'warning', globs: [...DEFAULT_GLOBS] };
-          next[id] = { ...cur, enabled: true };
-        }
-        return next;
-      });
-    } else {
-      setInstalledSets((prev) => { const n = new Set(prev); n.delete(set.id); return n; });
-      setInstalledRules((prev) => {
-        const n = new Set(prev);
-        for (const id of set.ruleIds) n.delete(id);
-        return n;
-      });
-      setConfigs((prev) => {
-        const next = { ...prev };
-        for (const id of set.ruleIds) {
-          if (next[id]) next[id] = { ...next[id], enabled: false };
-        }
-        return next;
-      });
-    }
-  };
-
   const onScopeChange = (s: Scope) => {
     setScope(s);
     setActiveCat(null);
@@ -307,15 +278,6 @@ export function RulesView() {
         </aside>
 
         <section className="rules-market-main">
-          <BulkAddToPresetsBar
-            disabled={!activeCat || setsInActiveCat.length === 0}
-            allRulesInActiveCat={(() => {
-              const ids = new Set<string>();
-              for (const s of setsInActiveCat) for (const id of s.ruleIds) ids.add(id);
-              return Array.from(ids);
-            })()}
-            onAdded={() => setHydrated(false)}
-          />
           {!activeCat || setsInActiveCat.length === 0 ? (
             <div className="rules-empty">
               <div className="rules-empty-icon" aria-hidden>
@@ -338,6 +300,15 @@ export function RulesView() {
                   <h2 className="rules-pane-title">{CATEGORY_LABEL[activeCat]}</h2>
                   <p className="rules-pane-sub">{setsInActiveCat.length} 个规则集</p>
                 </header>
+                <BulkAddToPresetsBar
+                  disabled={false}
+                  allRulesInActiveCat={(() => {
+                    const ids = new Set<string>();
+                    for (const s of setsInActiveCat) for (const id of s.ruleIds) ids.add(id);
+                    return Array.from(ids);
+                  })()}
+                  onAdded={() => setHydrated(false)}
+                />
                 <ul className="rules-set-list" role="list">
                   {setsInActiveCat.map((s) => {
                     const installed = installedSets.has(s.id);
@@ -401,17 +372,7 @@ export function RulesView() {
                     <header className="rules-pane-head">
                       <div className="rules-pane-eyebrow">规则集</div>
                       <h2 className="rules-pane-title">{selectedSet.name}</h2>
-                      <p className="rules-pane-sub">
-                        {selectedSetRules.length} 条具体规则
-                        <button
-                          type="button"
-                          className="btn btn-ghost rules-set-toggle"
-                          onClick={() => toggleSet(selectedSet, !installedSets.has(selectedSet.id))}
-                          data-testid={`set-toggle-${selectedSet.id}`}
-                        >
-                          {installedSets.has(selectedSet.id) ? '停用全部' : '启用全部'}
-                        </button>
-                      </p>
+                      <p className="rules-pane-sub">{selectedSetRules.length} 条具体规则</p>
                     </header>
                     <ul className="rules-rule-list" role="list">
                       {selectedSetRules.map((r) => (
