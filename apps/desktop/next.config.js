@@ -2,7 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   // We run as a local server inside Electron (renderer loads from
-  // http://localhost:3000), NOT a static export. We need server routes
+  // http://localhost:3766), NOT a static export. We need server routes
   // (/api/*) to read the rule catalog and run the checkit CLI.
   output: undefined,
   images: { unoptimized: true },

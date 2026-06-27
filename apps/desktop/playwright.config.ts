@@ -4,7 +4,7 @@ import { defineConfig, devices } from '@playwright/test';
  * Playwright E2E for @checkit/desktop.
  *
  * Strategy:
- * - Tests run against `next dev` on :3210 (started by the webServer block).
+ * - Tests run against `next dev` on :3766 (started by the webServer block).
  * - We use the *system* Chrome (channel: 'chrome') instead of bundled chromium
  *   because chromium download times out on this machine.
  * - Each test seeds localStorage with a representative checkit report so we
@@ -16,7 +16,7 @@ import { defineConfig, devices } from '@playwright/test';
  * - The IPC layer (Electron main + preload) gets exercised manually on a desktop.
  */
 
-const PORT = 3000;
+const PORT = 3766;
 const BASE_URL = `http://localhost:${PORT}`;
 
 export default defineConfig({
@@ -49,7 +49,7 @@ export default defineConfig({
   webServer: {
     command: 'pnpm dev:next',
     url: BASE_URL,
-    reuseExistingServer: true,  // reuse any :3000 server (prod or dev) — saves dev-mode compile wait
+    reuseExistingServer: true,  // reuse any :3766 server (prod or dev) — saves dev-mode compile wait
     timeout: 60_000,
     stdout: 'pipe',
     stderr: 'pipe',

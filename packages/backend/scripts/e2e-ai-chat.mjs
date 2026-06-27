@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.resolve(__dirname, '..', 'dist', 'cli.cjs');
-const DESKTOP = process.env.DESKTOP_URL ?? 'http://localhost:3000';
+const DESKTOP = process.env.DESKTOP_URL ?? 'http://localhost:3766';
 
 // Inject key from --key-file=<path> to avoid shell quoting issues with
 // tokens like '*'. Skips if already in env.
